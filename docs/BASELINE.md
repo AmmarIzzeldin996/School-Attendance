@@ -29,7 +29,7 @@
 npm.cmd install
 npm.cmd run vendor   # يعيد بناء src/ui_Vendor.html من node_modules
 npm.cmd run verify   # فحص ساكن: صياغة، include، عقد API/UI، غياب placeholders
-npm.cmd test         # 71 اختبارًا في 9 ملفات
+npm.cmd test         # 72 اختبارًا في 9 ملفات
 ```
 
 النتيجة المسجلة لهذا الأساس:
@@ -37,7 +37,7 @@ npm.cmd test         # 71 اختبارًا في 9 ملفات
 ```
 verify: OK — 13 server files, 7 UI files, 40 actions
 Test Files  9 passed (9)
-Tests       71 passed (71)
+Tests       72 passed (72)
 ```
 
 ## 4) ما تم التحقق منه آليًا

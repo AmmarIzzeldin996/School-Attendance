@@ -161,6 +161,25 @@ describe('authentication', () => {
     expect(failAs(app, '', 'loginGoogle', {}).code).toBe('INVALID_CREDENTIALS');
   });
 
+  it('never lets a secondary admin wipe or read SSO supervisors', () => {
+    const app = setup({ settings: { supervisors: ['owner@example.com'] } });
+    const second = createUser(app, { username: 'admin2', role: 'admin' });
+    const token = loginAs(app, second.username, second.password);
+
+    // البريد لا يظهر لغير المشرف الأصلي، وأي محاولة لتغييره تُتجاهل.
+    const visible = okAs(app, token, 'getSettings', {});
+    expect(visible.supervisors).toEqual([]);
+    visible.supervisors = ['attacker@example.com'];
+
+    visible.ssoEnabled = true;
+    okAs(app, token, 'saveSettings', { settings: visible });
+
+    const stored = JSON.parse(app.props.get('SETTINGS'));
+    expect(stored.ssoEnabled).toBe(true);
+    expect(stored.supervisors).toEqual(['owner@example.com']);
+    expect(ok(app, 'getSettings', {}).supervisors).toEqual(['owner@example.com']);
+  });
+
   it('protects the primary administrator from demotion or deactivation', () => {
     const app = setup();
     const primary = fail(app, 'saveUser', {

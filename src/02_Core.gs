@@ -198,7 +198,7 @@ function publicAccount_(account) {
 }
 
 function sanitizeSettings_(settings, account) {
-  var admin = !!account && (account.role === 'admin' || isPrimaryAdmin_(account));
+  var admin = !!account && isPrimaryAdmin_(account);
   return {
     systemName: settings.systemName,
     schoolName: settings.schoolName,

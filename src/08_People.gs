@@ -224,7 +224,12 @@ function getSettings_(ctx) {
 
 function saveSettings_(ctx, payload) {
   var before = readSettings_();
-  var settings = validateSettings_(payload.settings || payload);
+  var input = payload && payload.settings ? payload.settings : payload;
+  // المشرفون يُدارون من المشرف الأصلي فقط؛ أي قيمة مرسلة من مدير آخر تُتجاهل حفاظًا على SSO.
+  if (isPlainObject_(input) && permissionsFor_(ctx.account).indexOf('users') < 0) {
+    input = Object.assign({}, input, { supervisors: before.supervisors || [] });
+  }
+  var settings = validateSettings_(input);
   setSettings_(settings);
   audit_(ctx, 'حفظ الإعدادات', {
     targetType: 'settings',
