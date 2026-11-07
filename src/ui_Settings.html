@@ -1,0 +1,477 @@
+<script>
+/* الإعدادات: عام، المستخدمون، النسخ الاحتياطي، التدقيق، وكلمة المرور. */
+(function (SA) {
+  'use strict';
+  var ui = SA.ui;
+  var state = ui.state;
+  var h = ui.h, api = ui.api, can = ui.can, mount = ui.mount, toast = ui.toast, showError = ui.showError;
+  var newView = ui.newView, stale = ui.stale, setBusy = ui.setBusy;
+  var WEEKDAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+  var ROLES = [
+    { value: 'admin', label: 'مدير النظام' },
+    { value: 'gate', label: 'المعلم المناوب' },
+    { value: 'registrar', label: 'مسؤول الطلاب' },
+    { value: 'viewer', label: 'مدير المدرسة' }
+  ];
+
+  function tabs() {
+    var list = [];
+    if (can('settings')) list.push({ id: 'general', label: 'عام' });
+    if (can('users')) list.push({ id: 'users', label: 'المستخدمون' });
+    if (can('backups') || can('restore')) list.push({ id: 'backups', label: 'النسخ الاحتياطي' });
+    if (can('audit')) list.push({ id: 'audit', label: 'سجل التدقيق' });
+    list.push({ id: 'password', label: 'كلمة المرور' });
+    return list;
+  }
+
+  function renderSettings() {
+    var token = newView();
+    var list = tabs();
+    if (!list.some(function (tab) { return tab.id === state.settingsTab; })) state.settingsTab = list[0].id;
+    var active = state.settingsTab;
+    mount(ui.$('main'), [
+      ui.pageHead('الإعدادات', 'التحكم في النظام والحسابات والنسخ والتدقيق'),
+      ui.subnav(list, active, function (id) { state.settingsTab = id; renderSettings(); }),
+      ui.loadingRow('جارٍ تحميل الإعدادات…')
+    ]);
+    var jobs = {};
+    if (active === 'general') {
+      jobs.settings = api('getSettings');
+      jobs.status = api('getDatabaseStatus');
+    } else if (active === 'users') {
+      jobs.users = api('getUsers');
+    } else if (active === 'backups') {
+      jobs.backup = api('getBackupStatus');
+    } else if (active === 'audit') {
+      jobs.audit = api('getAudit', { limit: state.auditLimit });
+    } else {
+      jobs.none = Promise.resolve(null);
+    }
+    ui.loadJobs(jobs).then(function (data) {
+      if (stale(token)) return;
+      if (data.settings) state.settings = data.settings;
+      if (data.status) state.dbStatus = data.status;
+      if (data.users) state.users = data.users;
+      if (data.backup) state.backupStatus = data.backup;
+      if (data.audit) state.auditRows = data.audit;
+      drawSettings(active);
+    }).catch(function (error) {
+      if (stale(token)) return;
+      showError(error);
+      mount(ui.$('main'), [
+        ui.pageHead('الإعدادات', ''),
+        ui.subnav(list, active, function (id) { state.settingsTab = id; renderSettings(); }),
+        ui.alertBox(error.message, 'error'),
+        h('button', { className: 'btn', type: 'button', text: 'إعادة المحاولة', onClick: renderSettings })
+      ]);
+    });
+  }
+
+  function drawSettings(active) {
+    var content;
+    if (active === 'users') content = usersCard();
+    else if (active === 'backups') content = backupsCard();
+    else if (active === 'audit') content = auditCard();
+    else if (active === 'password') content = passwordCard();
+    else content = generalCard();
+    mount(ui.$('main'), [
+      ui.pageHead('الإعدادات', 'التحكم في النظام والحسابات والنسخ والتدقيق'),
+      ui.subnav(tabs(), active, function (id) { state.settingsTab = id; renderSettings(); }),
+      content
+    ]);
+  }
+
+  /* ================= عام ================= */
+
+  function generalCard() {
+    var settings = state.settings || {};
+    var nameInput = h('input', { type: 'text', maxlength: 100, value: settings.systemName || '' });
+    var schoolInput = h('input', { type: 'text', maxlength: 100, value: settings.schoolName || '' });
+    var classroomsInput = h('textarea', { rows: 3, placeholder: 'الصف الأول، الصف الثاني' });
+    classroomsInput.value = (settings.classrooms || []).join('، ');
+    var holidaysInput = h('textarea', { rows: 3, placeholder: '2026-01-01' });
+    holidaysInput.value = (settings.holidays || []).join('\n');
+    var lateInput = h('input', { type: 'time', value: settings.lateAfter || '07:30' });
+    var autoCloseInput = h('input', { type: 'checkbox', checked: !!settings.autoClose });
+    var closeTimeInput = h('input', { type: 'time', value: settings.closeTime || '08:00' });
+    var autoBackupInput = h('input', { type: 'checkbox', checked: !!settings.autoBackup });
+    var backupTimeInput = h('input', { type: 'time', value: settings.backupTime || '15:00' });
+    var retentionInput = h('input', { type: 'number', min: 2, max: 365, value: settings.retention || 30 });
+    var ssoInput = h('input', { type: 'checkbox', checked: !!settings.ssoEnabled });
+    var supervisorsInput = h('textarea', { rows: 2, placeholder: 'supervisor@school.edu' });
+    supervisorsInput.value = (settings.supervisors || []).join('\n');
+    var workdayBoxes = WEEKDAYS.map(function (label, index) {
+      var box = h('input', { type: 'checkbox', checked: (settings.workdays || []).indexOf(index) >= 0 });
+      return { index: index, box: box, node: h('label', { className: 'check' }, [box, h('span', { text: label })]) };
+    });
+    var save = h('button', { className: 'btn primary', type: 'button', text: 'حفظ الإعدادات' });
+    var supervisorField = null;
+
+    function splitList(text, separator) {
+      return String(text || '').split(separator).map(function (item) { return item.trim(); }).filter(Boolean);
+    }
+
+    function submit() {
+      var workdays = workdayBoxes.filter(function (entry) { return entry.box.checked; }).map(function (entry) { return entry.index; });
+      if (!workdays.length) { toast('حدد يوم دراسة واحدًا على الأقل.', 'error'); return; }
+      var payload = {
+        systemName: String(nameInput.value || '').trim(),
+        schoolName: String(schoolInput.value || '').trim(),
+        classrooms: splitList(classroomsInput.value, /[،,\n]/),
+        workdays: workdays,
+        holidays: splitList(holidaysInput.value, /[\n,،]/),
+        lateAfter: lateInput.value,
+        autoClose: autoCloseInput.checked,
+        closeTime: closeTimeInput.value,
+        autoBackup: autoBackupInput.checked,
+        backupTime: backupTimeInput.value,
+        retention: Number(retentionInput.value),
+        ssoEnabled: ssoInput.checked
+      };
+      if (!payload.systemName || !payload.schoolName) { toast('اسم النظام واسم المدرسة مطلوبان.', 'error'); return; }
+      if (!payload.lateAfter) { toast('حدد وقت التأخر.', 'error'); return; }
+      if (supervisorField) payload.supervisors = splitList(supervisorsInput.value, /[\n,،]/);
+      setBusy(save, true);
+      api('saveSettings', payload).then(function (data) {
+        setBusy(save, false);
+        state.settings = data;
+        ui.applyBranding();
+        toast('تم حفظ الإعدادات.', 'success');
+        renderSettings();
+      }).catch(function (error) {
+        setBusy(save, false);
+        showError(error);
+      });
+    }
+    save.addEventListener('click', submit);
+
+    var fields = [
+      h('div', { className: 'grid cols-2' }, [
+        ui.labeled('اسم النظام', nameInput),
+        ui.labeled('اسم المدرسة', schoolInput)
+      ]),
+      h('div', { className: 'grid cols-2' }, [
+        ui.labeled('الصفوف الدراسية', classroomsInput, 'افصل بينها بفاصلة. تُستخدم في نموذج الطالب.'),
+        ui.labeled('أيام الدراسة', h('div', { className: 'checkbox-grid' }, workdayBoxes.map(function (entry) { return entry.node; })))
+      ]),
+      h('div', { className: 'grid cols-2' }, [
+        ui.labeled('الإجازات الرسمية', holidaysInput, 'تاريخ ميلادي بصيغة YYYY-MM-DD في كل سطر.'),
+        ui.labeled('وقت التأخر', lateInput, 'أي حضور بعد هذا الوقت يُعد متأخرًا في التقارير.')
+      ]),
+      h('div', { className: 'grid cols-2' }, [
+        ui.labeled('إغلاق اليوم تلقائيًا', h('label', { className: 'check' }, [autoCloseInput, h('span', { text: 'تسجيل الغياب في نهاية اليوم' })])),
+        ui.labeled('وقت الإغلاق', closeTimeInput)
+      ]),
+      h('div', { className: 'grid cols-2' }, [
+        ui.labeled('نسخة احتياطية تلقائية', h('label', { className: 'check' }, [autoBackupInput, h('span', { text: 'إنشاء نسخة يومية' })])),
+        ui.labeled('وقت النسخ', backupTimeInput)
+      ]),
+      h('div', { className: 'grid cols-2' }, [
+        ui.labeled('عدد النسخ المحتفظ بها', retentionInput, 'الحد الأدنى 2 والأقصى 365. الأقدم يُحذف أولًا.'),
+        ui.labeled('الدخول بحساب Google', h('label', { className: 'check' }, [ssoInput, h('span', { text: 'تفعيل SSO مع الحسابات المربوطة' })]))
+      ])
+    ];
+    if (can('users') && state.user && state.user.isOwner) {
+      supervisorField = ui.labeled('بريد المشرفين (SSO)', supervisorsInput, 'من يملكون بريدًا هنا يمكنهم الدخول عبر Google.');
+      fields.push(supervisorField);
+    }
+    fields.push(h('div', { className: 'btn-row' }, [
+      save,
+      h('button', { className: 'btn', type: 'button', text: 'إعادة التحميل', onClick: renderSettings })
+    ]));
+
+    return h('div', {}, [ui.card('الإعدادات العامة', 'تُسجَّل كل تغييرات الإعدادات في سجل التدقيق.', [], h('div', { className: 'stack' }, fields)), databaseCard()]);
+  }
+
+  function databaseCard() {
+    var status = state.dbStatus;
+    if (!status) return '';
+    var tables = status.tables || [];
+    var columns = [
+      { label: 'الجدول', value: function (row) { return row.name; } },
+      { label: 'موجود', value: function (row) { return ui.badge(row.exists ? 'نعم' : 'لا', row.exists ? 'active' : 'revoked'); } },
+      { label: 'المخطط', value: function (row) { return ui.badge(row.valid ? 'سليم' : 'يحتاج ترحيل', row.valid ? 'active' : 'revoked'); } },
+      { label: 'الصفوف', align: 'center', value: function (row) { return row.rows; } }
+    ];
+    var db = status.database || {};
+    return ui.card('قاعدة البيانات', 'الحالة الحالية للمخطط والإصدار', [], h('div', {}, [
+      status.valid ? ui.alertBox('بنية قاعدة البيانات سليمة وجاهزة.', 'success') : ui.alertBox('بعض الجداول تحتاج ترحيلًا. شغّل migrateV36 من محرر Apps Script.', 'error'),
+      h('dl', { className: 'kv' }, [
+        h('dt', { text: 'الإصدار' }), h('dd', { text: status.version || '—' }),
+        h('dt', { text: 'مخطط' }), h('dd', { text: status.schemaVersion || '—' }),
+        h('dt', { text: 'الملف' }), h('dd', {}, db.url ? h('a', { href: db.url, target: '_blank', rel: 'noopener', text: db.name || 'فتح الجدول' }) : (db.name || '—'))
+      ]),
+      h('div', { className: 'table-wrap', style: { marginTop: '12px' } }, ui.dataTable(columns, tables, { emptyTitle: 'لا توجد جداول' }))
+    ]));
+  }
+
+  /* ================= المستخدمون ================= */
+
+  function usersCard() {
+    var columns = [
+      { label: 'اسم المستخدم', className: 'mono', value: function (row) { return row.username; } },
+      { label: 'الاسم', value: function (row) { return row.name; } },
+      { label: 'الدور', value: function (row) { return row.roleLabel; } },
+      { label: 'البريد', className: 'mono', value: function (row) { return row.email || '—'; } },
+      { label: 'الحالة', value: function (row) { return ui.badge(row.active ? 'نشط' : 'موقوف', row.active ? 'active' : 'inactive'); } },
+      { label: 'النوع', value: function (row) { return row.isOwner ? ui.badge('المشرف الأصلي', 'info') : (row.mustChange ? ui.badge('كلمة مؤقتة', 'pending') : '—'); } },
+      {
+        label: 'إجراء',
+        value: function (row) {
+          return h('button', { className: 'btn sm', type: 'button', text: 'تعديل', onClick: function () { openUserForm(row); } });
+        }
+      }
+    ];
+    return ui.card('المستخدمون', 'الصلاحيات تُمنح حسب الدور. المشرف الأصلي وُحيد ولا يمكن تعطيله.', [
+      h('button', { className: 'btn primary', type: 'button', text: 'إضافة مستخدم', onClick: function () { openUserForm(null); } }),
+      h('button', { className: 'btn', type: 'button', text: 'تحديث', onClick: renderSettings })
+    ], ui.dataTable(columns, state.users || [], {
+      emptyTitle: 'لا يوجد مستخدمون',
+      emptyHint: 'أضف حسابًا لمن يحتاج الدخول.'
+    }));
+  }
+
+  function openUserForm(user) {
+    var editing = !!user;
+    var usernameInput = h('input', { type: 'text', dir: 'ltr', maxlength: 40, value: editing ? user.username : '', placeholder: 'user.name' });
+    var nameInput = h('input', { type: 'text', maxlength: 100, value: editing ? user.name : '' });
+    var emailInput = h('input', { type: 'email', dir: 'ltr', maxlength: 120, value: editing ? user.email : '', placeholder: 'name@school.edu' });
+    var roleSelect = ui.selectEl(ROLES, editing ? user.role : 'gate', null);
+    var activeInput = h('input', { type: 'checkbox', checked: editing ? !!user.active : true });
+    var passwordInput = h('input', { type: 'password', dir: 'ltr', maxlength: 128, autocomplete: 'new-password', placeholder: editing ? 'اتركه فارغًا لعدم التغيير' : '8 خانات على الأقل' });
+    var save = h('button', { className: 'btn primary', type: 'button', text: editing ? 'حفظ التعديل' : 'إضافة المستخدم' });
+    var modal;
+    function submit() {
+      var payload = {
+        username: String(usernameInput.value || '').trim().toLowerCase(),
+        name: String(nameInput.value || '').trim(),
+        email: String(emailInput.value || '').trim().toLowerCase(),
+        role: roleSelect.value,
+        active: activeInput.checked
+      };
+      if (editing) payload.id = user.id;
+      if (passwordInput.value) payload.password = passwordInput.value;
+      if (!payload.username || !payload.name) { toast('اسم المستخدم والاسم مطلوبان.', 'error'); return; }
+      if (!editing && !payload.password) { toast('كلمة مرور الحساب الجديد مطلوبة.', 'error'); return; }
+      if (payload.password && payload.password.length < 8) { toast('كلمة المرور 8 خانات على الأقل.', 'error'); return; }
+      if (editing && user.isOwner && (payload.role !== 'admin' || !payload.active)) {
+        toast('لا يمكن تعطيل المشرف الأصلي أو تخفيض صلاحياته.', 'error'); return;
+      }
+      setBusy(save, true);
+      api('saveUser', payload).then(function (data) {
+        setBusy(save, false);
+        state.users = data.users || state.users;
+        modal.close();
+        toast(editing ? 'تم حفظ الحساب.' : 'تم إنشاء الحساب. سلّم كلمة المرور المؤقتة للمستخدم.', 'success');
+        renderSettings();
+      }).catch(function (error) {
+        setBusy(save, false);
+        showError(error);
+      });
+    }
+    save.addEventListener('click', submit);
+    modal = ui.openModal(editing ? 'تعديل مستخدم' : 'إضافة مستخدم', h('div', { className: 'stack' }, [
+      editing && user.isOwner ? ui.alertBox('هذا هو المشرف الأصلي. لا يمكن تعطيله أو تغيير دوره.', 'warn') : null,
+      h('div', { className: 'grid cols-2' }, [
+        ui.labeled('اسم المستخدم', usernameInput, 'أحرف إنجليزية وأرقام ونقطة وشرطة.'),
+        ui.labeled('الاسم الكامل', nameInput)
+      ]),
+      h('div', { className: 'grid cols-2' }, [
+        ui.labeled('البريد الإلكتروني', emailInput, 'اختياري، مطلوب للدخول عبر Google.'),
+        ui.labeled('الدور', roleSelect)
+      ]),
+      ui.labeled(editing ? 'كلمة مرور جديدة (اختياري)' : 'كلمة المرور المؤقتة', passwordInput, 'عند التعيين تُبطل جلسات المستخدم ويُطلب منه تغييرها عند الدخول.'),
+      h('label', { className: 'check' }, [activeInput, h('span', { text: 'الحساب نشط' })])
+    ]), [
+      h('button', { className: 'btn', type: 'button', text: 'إلغاء', onClick: function () { modal.close(); } }),
+      save
+    ], { narrow: true });
+  }
+
+  /* ================= النسخ الاحتياطي ================= */
+
+  function stampText(value) {
+    return value ? String(value).replace('T', ' ').slice(0, 16) : '—';
+  }
+
+  function backupsCard() {
+    var status = state.backupStatus || { files: [] };
+    var columns = [
+      { label: 'الملف', className: 'mono', value: function (row) { return row.name; } },
+      { label: 'أُنشئت', value: function (row) { return stampText(row.createdAt); } },
+      { label: 'الحجم', value: function (row) { return ui.sizeKb(row.size); } },
+      {
+        label: 'إجراء',
+        value: function (row) {
+          return h('div', { className: 'btn-row' }, [
+            h('a', { className: 'btn sm ghost', href: row.url, target: '_blank', rel: 'noopener', text: 'فتح' }),
+            can('restore') ? h('button', { className: 'btn sm danger-ghost', type: 'button', text: 'استعادة', onClick: function () { previewRestore(row); } }) : null
+          ]);
+        }
+      }
+    ];
+    var actions = [];
+    if (can('backups')) {
+      actions.push(h('button', { className: 'btn primary', type: 'button', text: 'نسخة الآن', onClick: createBackup }));
+      actions.push(h('button', { className: 'btn', type: 'button', text: 'تطبيق سياسة الاحتفاظ', onClick: runRetention }));
+    }
+    actions.push(h('button', { className: 'btn', type: 'button', text: 'تحديث', onClick: renderSettings }));
+    return h('div', {}, [
+      ui.card('حالة النسخ الاحتياطي', 'النسخ تُحفظ في مجلد Drive خاص بالنظام.', actions, h('div', {}, [
+        status.error ? ui.alertBox('آخر خطأ: ' + status.error, 'error') : null,
+        status.maintenanceError ? ui.alertBox('خطأ الصيانة: ' + status.maintenanceError, 'warn') : null,
+        h('div', { className: 'summary-grid' }, [
+          ui.stat('آخر نسخة ناجحة', status.lastSuccess ? stampText(status.lastSuccess) : 'لا يوجد', status.lastSuccess ? 'ok' : 'bad'),
+          ui.stat('عدد النسخ', (status.files || []).length, 'info'),
+          ui.stat('النسخ التلقائي', status.triggerActive ? 'مفعّل' : 'غير مفعّل', status.triggerActive ? 'ok' : 'warn')
+        ]),
+        ui.alertBox('الاستعادة تستبدل بيانات الطلاب والحضور والرحلات. تُنشأ نسخة أمان تلقائية قبل الاستبدال.', 'info')
+      ])),
+      ui.card('النسخ المتاحة', 'الاحتفاظ الافتراضي 30 نسخة؛ الحد الأدنى 2.', [], ui.dataTable(columns, status.files || [], {
+        emptyTitle: 'لا توجد نسخ احتياطية',
+        emptyHint: can('backups') ? 'أنشئ نسخة الآن.' : 'اطلب من مدير النظام إنشاء نسخة.'
+      }))
+    ]);
+  }
+
+  function createBackup() {
+    api('createBackup', {}).then(function (data) {
+      toast('تم إنشاء النسخة: ' + data.counts.records + ' سجل حضور، وحُذف ' + data.pruned + ' نسخة قديمة.', 'success');
+      renderSettings();
+    }).catch(showError);
+  }
+
+  function runRetention() {
+    ui.confirmAction('سيُطبَّق الاحتفاظ على النسخ والجلسات والرحلات القديمة. سجلات الحضور التاريخية لا تُحذف. متابعة؟', 'تطبيق السياسة').then(function (ok) {
+      if (!ok) return;
+      api('runRetention', {}).then(function (data) {
+        toast('نسخ محذوفة: ' + data.prunedBackups + ' • رحلات ملغاة: ' + data.cancelledTrips + ' • تدقيق أقدم من سنتين: ' + data.oldAuditRecords, 'success');
+        renderSettings();
+      }).catch(showError);
+    });
+  }
+
+  function previewRestore(file) {
+    api('previewRestore', { id: file.id }).then(function (preview) {
+      var confirmInput = h('input', { type: 'text', dir: 'rtl', placeholder: 'اكتب: استعادة' });
+      var restore = h('button', { className: 'btn danger', type: 'button', text: 'استعادة الآن', disabled: true });
+      var modal;
+      confirmInput.addEventListener('input', function () { restore.disabled = confirmInput.value.trim() !== 'استعادة'; });
+      restore.addEventListener('click', function () {
+        setBusy(restore, true);
+        api('restoreBackup', { id: file.id, confirmation: 'استعادة' }).then(function (result) {
+          modal.close();
+          toast('اكتملت الاستعادة. نسخة الأمان متاحة في Drive.', 'success');
+          state.report = null;
+          renderSettings();
+        }).catch(function (error) {
+          setBusy(restore, false);
+          showError(error);
+        });
+      });
+      modal = ui.openModal('استعادة نسخة احتياطية', h('div', { className: 'stack' }, [
+        ui.alertBox('سيُستبدل كل سجل الطلاب والحضور والرحلات ببيانات النسخة. لا يمكن التراجع إلا من نسخة الأمان.', 'error'),
+        h('dl', { className: 'kv' }, [
+          h('dt', { text: 'تاريخ النسخة' }), h('dd', { text: stampText(preview.createdAt) }),
+          h('dt', { text: 'الطلاب' }), h('dd', { text: preview.students }),
+          h('dt', { text: 'سجلات الحضور' }), h('dd', { text: preview.records }),
+          h('dt', { text: 'الأيام' }), h('dd', { text: preview.days }),
+          h('dt', { text: 'السائقون' }), h('dd', { text: preview.drivers }),
+          h('dt', { text: 'البطاقات' }), h('dd', { text: preview.cards }),
+          h('dt', { text: 'الرحلات' }), h('dd', { text: preview.trips })
+        ]),
+        ui.labeled('للتأكيد اكتب كلمة «استعادة»', confirmInput)
+      ]), [
+        h('button', { className: 'btn', type: 'button', text: 'إلغاء', onClick: function () { modal.close(); } }),
+        restore
+      ], { narrow: true });
+    }).catch(showError);
+  }
+
+  /* ================= التدقيق ================= */
+
+  function auditCard() {
+    var rows = state.auditRows || [];
+    var columns = [
+      { label: 'الوقت', value: function (row) { return stampText(row.at); } },
+      { label: 'المستخدم', value: function (row) { return row.operator; } },
+      { label: 'العملية', value: function (row) { return row.action; } },
+      { label: 'النتيجة', value: function (row) { return ui.badge(row.result === 'SUCCESS' ? 'نجحت' : 'فشلت', row.result === 'SUCCESS' ? 'success' : 'fail'); } },
+      { label: 'الهدف', value: function (row) { return [row.targetType, row.targetId].filter(Boolean).join(' / ') || '—'; } },
+      { label: 'التفاصيل', value: function (row) { return row.details || '—'; } },
+      {
+        label: '',
+        value: function (row) {
+          return h('button', { className: 'btn sm ghost', type: 'button', text: 'تفاصيل', onClick: function () { openAuditDetail(row); } });
+        }
+      }
+    ];
+    var limitSelect = ui.selectEl([100, 200, 500].map(function (value) {
+      return { value: value, label: value + ' سجل' };
+    }), state.auditLimit, function (value) {
+      state.auditLimit = Number(value);
+      renderSettings();
+    });
+    return ui.card('سجل التدقيق', 'أحدث ' + rows.length + ' عملية. السجل إلحاقي ولا يُعدَّل.', [
+      limitSelect,
+      h('button', { className: 'btn', type: 'button', text: 'تحديث', onClick: renderSettings })
+    ], ui.dataTable(columns, rows, {
+      emptyTitle: 'لا توجد سجلات تدقيق',
+      emptyHint: 'ستظهر العمليات هنا بعد أول استخدام.'
+    }));
+  }
+
+  function openAuditDetail(row) {
+    function block(title, value) {
+      return h('div', {}, [h('div', { className: 'label', text: title }), h('pre', { className: 'code-line', text: value || '—' })]);
+    }
+    ui.openModal('تفاصيل العملية', h('div', { className: 'stack' }, [
+      h('dl', { className: 'kv' }, [
+        h('dt', { text: 'الوقت' }), h('dd', { text: stampText(row.at) }),
+        h('dt', { text: 'المستخدم' }), h('dd', { text: row.operator }),
+        h('dt', { text: 'العملية' }), h('dd', { text: row.action }),
+        h('dt', { text: 'النتيجة' }), h('dd', { text: row.result }),
+        h('dt', { text: 'السبب' }), h('dd', { text: row.reason || '—' }),
+        h('dt', { text: 'معرّف الطلب' }), h('dd', { className: 'mono', text: row.requestId || '—' })
+      ]),
+      block('قبل', row.before),
+      block('بعد', row.after)
+    ]), [h('button', { className: 'btn primary', type: 'button', text: 'إغلاق', onClick: function () { ui.closeAllModals(); } })], { wide: true });
+  }
+
+  /* ================= كلمة المرور ================= */
+
+  function passwordCard() {
+    var current = h('input', { type: 'password', dir: 'ltr', autocomplete: 'current-password', maxlength: 128 });
+    var next = h('input', { type: 'password', dir: 'ltr', autocomplete: 'new-password', maxlength: 128 });
+    var confirm = h('input', { type: 'password', dir: 'ltr', autocomplete: 'new-password', maxlength: 128 });
+    var save = h('button', { className: 'btn primary', type: 'button', text: 'تغيير كلمة المرور' });
+    function submit() {
+      if (!current.value) { toast('أدخل كلمة المرور الحالية.', 'error'); return; }
+      if (String(next.value || '').length < 8) { toast('كلمة المرور الجديدة 8 خانات على الأقل.', 'error'); return; }
+      if (next.value !== confirm.value) { toast('تأكيد كلمة المرور لا يطابق.', 'error'); return; }
+      setBusy(save, true);
+      api('changePassword', { currentPassword: current.value, newPassword: next.value }).then(function () {
+        setBusy(save, false);
+        toast('تم تغيير كلمة المرور. سجّل الدخول من جديد.', 'success');
+        ui.showLogin('تم تغيير كلمة المرور. سجّل الدخول بكلمة المرور الجديدة.');
+      }).catch(function (error) {
+        setBusy(save, false);
+        showError(error);
+      });
+    }
+    save.addEventListener('click', submit);
+    return ui.card('كلمة المرور', 'تغيير كلمة المرور يُبطل كل الجلسات النشطة لحسابك.', [], h('div', { className: 'stack' }, [
+      ui.alertBox('استخدم 8 خانات على الأقل. لا تشارك كلمة المرور مع أي شخص.', 'info'),
+      ui.labeled('كلمة المرور الحالية', current),
+      h('div', { className: 'grid cols-2' }, [
+        ui.labeled('كلمة المرور الجديدة', next),
+        ui.labeled('تأكيد كلمة المرور الجديدة', confirm)
+      ]),
+      h('div', { className: 'btn-row' }, [save])
+    ]));
+  }
+
+  ui.renderSettings = renderSettings;
+})(window.SA);
+</script>

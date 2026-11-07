@@ -1,0 +1,353 @@
+<script>
+/* الطلاب: القائمة، الإضافة/التعديل، الاستيراد، وإدارة بطاقات QR. */
+(function (SA) {
+  'use strict';
+  var ui = SA.ui;
+  var state = ui.state;
+  var h = ui.h, api = ui.api, can = ui.can, mount = ui.mount, toast = ui.toast, showError = ui.showError;
+  var newView = ui.newView, stale = ui.stale, setBusy = ui.setBusy;
+
+  function studentTabs() {
+    var tabs = [{ id: 'list', label: 'قائمة الطلاب' }, { id: 'import', label: 'استيراد' }];
+    if (can('cards')) tabs.push({ id: 'cards', label: 'البطاقات' });
+    return tabs;
+  }
+
+  function renderStudents() {
+    var token = newView();
+    var tabs = studentTabs();
+    if (!tabs.some(function (tab) { return tab.id === state.studentsTab; })) state.studentsTab = 'list';
+    var active = state.studentsTab;
+    mount(ui.$('main'), [
+      ui.pageHead('الطلاب', 'بيانات الطلاب وبطاقات الدخول'),
+      ui.subnav(tabs, active, function (id) { state.studentsTab = id; renderStudents(); }),
+      ui.loadingRow('جارٍ تحميل البيانات…')
+    ]);
+    var jobs = { students: api('getStudents') };
+    if (active === 'cards') {
+      jobs.cards = api('getCards');
+      if (can('drivers.manage')) jobs.drivers = api('getDriverAdminData');
+      if (can('users')) jobs.users = api('getUsers');
+    }
+    ui.loadJobs(jobs).then(function (data) {
+      if (stale(token)) return;
+      state.students = data.students || [];
+      if (data.cards) state.cards = data.cards;
+      if (data.drivers) state.driversData = data.drivers;
+      if (data.users) state.users = data.users;
+      drawStudents(active);
+    }).catch(function (error) {
+      if (stale(token)) return;
+      showError(error);
+      mount(ui.$('main'), [
+        ui.pageHead('الطلاب', ''),
+        ui.subnav(tabs, active, function (id) { state.studentsTab = id; renderStudents(); }),
+        ui.alertBox(error.message, 'error'),
+        h('button', { className: 'btn', type: 'button', text: 'إعادة المحاولة', onClick: renderStudents })
+      ]);
+    });
+  }
+
+  function drawStudents(active) {
+    var content;
+    if (active === 'import') content = importCard();
+    else if (active === 'cards') content = cardsCard();
+    else content = listCard();
+    mount(ui.$('main'), [
+      ui.pageHead('الطلاب', 'بيانات الطلاب وبطاقات الدخول'),
+      ui.subnav(studentTabs(), active, function (id) { state.studentsTab = id; renderStudents(); }),
+      content
+    ]);
+    if (active === 'list') {
+      var input = ui.$('studentSearch');
+      if (input) setTimeout(function () { try { input.focus(); } catch (ignored) { /* تجاهل */ } }, 60);
+    }
+  }
+
+  function filteredStudents() {
+    var query = String(state.studentSearch || '').trim().toLowerCase();
+    if (!query) return state.students;
+    return state.students.filter(function (student) {
+      return String(student.id).toLowerCase().indexOf(query) >= 0 ||
+        String(student.name).toLowerCase().indexOf(query) >= 0 ||
+        String(student.classroom).toLowerCase().indexOf(query) >= 0 ||
+        String(student.phone || '').toLowerCase().indexOf(query) >= 0;
+    });
+  }
+
+  function listCard() {
+    var tableHost = h('div');
+    function paint() {
+      var columns = [
+        { label: 'الرقم', className: 'mono', value: function (row) { return row.id; } },
+        { label: 'الاسم', value: function (row) { return row.name; } },
+        { label: 'الصف', value: function (row) { return row.classroom; } },
+        { label: 'الجوال', className: 'mono', value: function (row) { return row.phone || '—'; } },
+        { label: 'الحالة', value: function (row) { return ui.badge(row.active ? 'نشط' : 'موقوف', row.active ? 'active' : 'inactive'); } }
+      ];
+      var actions = [];
+      if (can('students.write')) {
+        actions.push({
+          label: 'إجراءات',
+          value: function (row) {
+            return h('div', { className: 'btn-row' }, [
+              h('button', { className: 'btn sm', type: 'button', text: 'تعديل', onClick: function () { openStudentForm(row); } })
+            ]);
+          }
+        });
+      }
+      if (can('cards')) {
+        actions.push({
+          label: 'البطاقة',
+          value: function (row) {
+            return h('button', {
+              className: 'btn sm ghost', type: 'button', text: 'إصدار بطاقة',
+              onClick: function () { ui.issueCardFor('STUDENT', row.id).then(renderStudents).catch(showError); }
+            });
+          }
+        });
+      }
+      var rows = filteredStudents();
+      ui.mount(tableHost, ui.dataTable(columns.concat(actions), rows, {
+        emptyTitle: state.students.length ? 'لا توجد نتائج مطابقة' : 'لا يوجد طلاب بعد',
+        emptyHint: state.students.length ? 'غيّر كلمة البحث.' : 'أضف طالبًا يدويًا أو استورد قائمة.'
+      }));
+    }
+    var toolbar = h('div', { className: 'search-row' }, [
+      h('div', { className: 'field' }, [
+        h('label', { htmlFor: 'studentSearch', text: 'بحث' }),
+        h('input', {
+          id: 'studentSearch', type: 'search', value: state.studentSearch, placeholder: 'الاسم أو الرقم أو الصف',
+          onInput: function () { state.studentSearch = this.value; paint(); }
+        })
+      ]),
+      can('students.write') ? h('button', { className: 'btn primary', type: 'button', text: 'إضافة طالب', onClick: function () { openStudentForm(null); } }) : null,
+      h('button', { className: 'btn', type: 'button', text: 'تحديث', onClick: renderStudents })
+    ]);
+    paint();
+    return ui.card('قائمة الطلاب', state.students.length + ' طالب مسجّل', [], h('div', {}, [toolbar, tableHost]));
+  }
+
+  function openStudentForm(student) {
+    var editing = !!student;
+    var idInput = h('input', { type: 'text', dir: 'ltr', maxlength: 30, value: editing ? student.id : '', disabled: editing, placeholder: '4 أرقام' });
+    var nameInput = h('input', { type: 'text', maxlength: 120, value: editing ? student.name : '' });
+    var classroomInput = h('input', { type: 'text', list: 'classroomOptions', maxlength: 80, value: editing ? student.classroom : '' });
+    var phoneInput = h('input', { type: 'text', dir: 'ltr', maxlength: 30, value: editing ? (student.phone || '') : '', placeholder: '05xxxxxxxx' });
+    var activeInput = h('input', { type: 'checkbox', checked: editing ? !!student.active : true });
+    var datalist = h('datalist', { id: 'classroomOptions' }, ((state.settings && state.settings.classrooms) || []).map(function (item) {
+      return h('option', { value: item });
+    }));
+    var save = h('button', { className: 'btn primary', type: 'button', text: editing ? 'حفظ التعديل' : 'إضافة الطالب' });
+    var modal;
+    function submit() {
+      var payload = {
+        id: idInput.value.trim(),
+        name: nameInput.value.trim(),
+        classroom: classroomInput.value.trim(),
+        phone: phoneInput.value.trim(),
+        active: activeInput.checked
+      };
+      if (!/^\d{4}$/.test(payload.id) && !editing) { toast('رقم الطالب يجب أن يكون 4 أرقام.', 'error'); return; }
+      if (!payload.name || !payload.classroom) { toast('اسم الطالب والصف مطلوبان.', 'error'); return; }
+      if (editing) payload.originalId = student.id;
+      setBusy(save, true);
+      api('saveStudent', payload).then(function (data) {
+        state.students = data.students || state.students;
+        modal.close();
+        toast(editing ? 'تم حفظ تعديلات الطالب.' : 'تمت إضافة الطالب.', 'success');
+        renderStudents();
+      }).catch(function (error) {
+        setBusy(save, false);
+        showError(error);
+      });
+    }
+    save.addEventListener('click', submit);
+    modal = ui.openModal(editing ? 'تعديل طالب' : 'إضافة طالب', h('div', { className: 'stack' }, [
+      ui.alertBox('رقم الطالب ثابت بعد الإنشاء. لتغيير الرقم أضف طالبًا جديدًا.', 'info'),
+      ui.labeled('رقم الطالب', idInput, '4 أرقام، مثال: 1001'),
+      ui.labeled('اسم الطالب', nameInput),
+      ui.labeled('الصف', classroomInput, 'اختر من الصفوف المحفوظة أو اكتب صفًا جديدًا.'),
+      ui.labeled('جوال ولي الأمر', phoneInput, 'اختياري.'),
+      h('label', { className: 'check' }, [activeInput, h('span', { text: 'الطالب نشط' })]),
+      datalist
+    ]), [
+      h('button', { className: 'btn', type: 'button', text: 'إلغاء', onClick: function () { modal.close(); } }),
+      save
+    ], { narrow: true });
+  }
+
+  function downloadText(filename, text) {
+    var blob = new Blob(['\ufeff' + text], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var link = h('a', { href: url, download: filename });
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+  }
+
+  function importCard() {
+    var textarea = h('textarea', {
+      id: 'importText', rows: 10, dir: 'ltr', placeholder: '1001,أحمد محمد,الصف الأول,0555555555\n1002,سارة علي,الصف الثاني,'
+    });
+    var run = h('button', { className: 'btn primary', type: 'button', text: 'استيراد الطلاب' });
+    function parse() {
+      var lines = String(textarea.value || '').split(/\r?\n/);
+      var rows = [];
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (!line) continue;
+        var parts = line.split(/\t|,/).map(function (part) { return part.trim(); });
+        if (parts.length < 3) throw new Error('السطر ' + (i + 1) + ': يحتاج رقمًا واسمًا وصفًا على الأقل.');
+        rows.push({ id: parts[0], name: parts[1], classroom: parts[2], phone: parts[3] || '' });
+      }
+      if (!rows.length) throw new Error('الصق بيانات الطلاب أولًا.');
+      if (rows.length > 500) throw new Error('أقصى عدد في الدفعة 500 طالب.');
+      return rows;
+    }
+    function submit() {
+      var rows;
+      try { rows = parse(); }
+      catch (error) { toast(error.message, 'error'); return; }
+      setBusy(run, true);
+      api('importStudents', { rows: rows }).then(function (data) {
+        setBusy(run, false);
+        state.students = data.students || state.students;
+        state.studentsTab = 'list';
+        toast('تم استيراد ' + data.count + ' طالبًا.', 'success');
+        renderStudents();
+      }).catch(function (error) {
+        setBusy(run, false);
+        showError(error);
+      });
+    }
+    run.addEventListener('click', submit);
+    return ui.card('استيراد الطلاب', 'ألصق الصفوف بصيغة: الرقم، الاسم، الصف، الجوال (اختياري). كل سطر طالب.', [], h('div', { className: 'stack' }, [
+      ui.alertBox('يُرفض الاستيراد بالكامل إذا كان أي سطر غير صحيح. الصفوف المكررة أو الأسماء المكررة تُرفض.', 'warn'),
+      textarea,
+      h('div', { className: 'btn-row' }, [
+        run,
+        h('button', {
+          className: 'btn', type: 'button', text: 'تنزيل قالب CSV',
+          onClick: function () { downloadText('students-template.csv', 'id,name,classroom,phone\n1001,اسم الطالب,الصف الأول,0555555555\n'); }
+        }),
+        h('button', { className: 'btn', type: 'button', text: 'رجوع للقائمة', onClick: function () { state.studentsTab = 'list'; renderStudents(); } })
+      ])
+    ]));
+  }
+
+  function cardsCard() {
+    var issueButton = can('cards') ? h('button', { className: 'btn primary', type: 'button', text: 'إصدار بطاقة', onClick: function () { openIssueCard(); } }) : null;
+    var columns = [
+      { label: 'النوع', value: function (row) { return ui.cardTypeLabel(row.type); } },
+      { label: 'الصاحب', value: function (row) { return row.ownerName + ' (' + row.ownerId + ')'; } },
+      { label: 'الحالة', value: function (row) { return ui.badge(row.status === 'ACTIVE' ? 'نشطة' : 'ملغاة', row.status === 'ACTIVE' ? 'active' : 'revoked'); } },
+      { label: 'أُصدرت', value: function (row) { return ui.timeOf(row.issuedAt) + ' • ' + row.issuedBy; } },
+      { label: 'آخر استخدام', value: function (row) { return row.lastUsedAt ? ui.timeOf(row.lastUsedAt) : '—'; } },
+      {
+        label: 'إجراء',
+        value: function (row) {
+          if (row.status !== 'ACTIVE') return '—';
+          return h('button', { className: 'btn sm danger-ghost', type: 'button', text: 'إلغاء', onClick: function () { openRevokeCard(row); } });
+        }
+      }
+    ];
+    return ui.card('البطاقات', 'الرموز مخزّنة كبصمات فقط؛ لا يمكن عرض رمز بطاقة صدرت سابقًا.', [issueButton, h('button', { className: 'btn', type: 'button', text: 'تحديث', onClick: renderStudents })],
+      ui.dataTable(columns, state.cards, { emptyTitle: 'لا توجد بطاقات', emptyHint: 'أصدر بطاقة لطالب أو سائق أو مستخدم.' }));
+  }
+
+  function ownersFor(type) {
+    if (type === 'STUDENT') {
+      return state.students.filter(function (student) { return student.active; }).map(function (student) {
+        return { value: student.id, label: student.name + ' — ' + student.classroom + ' (' + student.id + ')' };
+      });
+    }
+    if (type === 'DRIVER') {
+      return (state.driversData.drivers || []).filter(function (driver) { return driver.active; }).map(function (driver) {
+        return { value: driver.code, label: driver.name + ' (' + driver.code + ')' };
+      });
+    }
+    return state.users.filter(function (user) { return user.active; }).map(function (user) {
+      return { value: user.id, label: user.name + ' (' + user.username + ')' };
+    });
+  }
+
+  function openIssueCard(presetType, presetOwner) {
+    var types = [{ value: 'STUDENT', label: 'بطاقة طالب' }];
+    if (can('drivers.manage')) types.push({ value: 'DRIVER', label: 'بطاقة سائق' });
+    if (can('users')) types.push({ value: 'USER', label: 'بطاقة مستخدم' });
+    var type = presetType || types[0].value;
+    var typeSelect = ui.selectEl(types, type, function (value) { type = value; paintOwners(); });
+    var ownerHost = h('div');
+    var note = h('input', { type: 'text', maxlength: 120, placeholder: 'ملاحظة اختيارية' });
+    var save = h('button', { className: 'btn primary', type: 'button', text: 'إصدار البطاقة' });
+    var modal;
+    var ownerSelect;
+    function paintOwners() {
+      var owners = ownersFor(type);
+      ui.clear(ownerHost);
+      if (!owners.length) {
+        ownerSelect = null;
+        ownerHost.appendChild(ui.alertBox('لا يوجد أصحاب نشطون لهذا النوع. أضف السجل أولًا.', 'warn'));
+        return;
+      }
+      ownerSelect = ui.selectEl(owners, presetOwner && type === presetType ? presetOwner : owners[0].value, null);
+      ownerHost.appendChild(ui.labeled('صاحب البطاقة', ownerSelect));
+    }
+    function submit() {
+      if (!ownerSelect) { toast('اختر صاحب البطاقة.', 'error'); return; }
+      setBusy(save, true);
+      api('issueCard', { type: type, ownerId: ownerSelect.value, note: note.value.trim() }).then(function (result) {
+        modal.close();
+        ui.showCardToken(result);
+        toast('تم إصدار البطاقة.', 'success');
+        if (state.studentsTab === 'cards') renderStudents();
+      }).catch(function (error) {
+        setBusy(save, false);
+        showError(error);
+      });
+    }
+    save.addEventListener('click', submit);
+    paintOwners();
+    modal = ui.openModal('إصدار بطاقة', h('div', { className: 'stack' }, [
+      ui.alertBox('إصدار بطاقة جديدة لصاحب لديه بطاقة نشطة يُلغي البطاقة السابقة تلقائيًا.', 'info'),
+      ui.labeled('نوع البطاقة', typeSelect),
+      ownerHost,
+      ui.labeled('ملاحظة', note)
+    ]), [
+      h('button', { className: 'btn', type: 'button', text: 'إلغاء', onClick: function () { modal.close(); } }),
+      save
+    ], { narrow: true });
+  }
+
+  function openRevokeCard(card) {
+    var reason = h('input', { type: 'text', maxlength: 200, placeholder: 'سبب الإلغاء (اختياري)' });
+    var save = h('button', { className: 'btn danger', type: 'button', text: 'تأكيد الإلغاء' });
+    var modal;
+    function submit() {
+      setBusy(save, true);
+      api('revokeCard', { cardId: card.cardId, reason: reason.value.trim() }).then(function () {
+        modal.close();
+        toast('تم إلغاء البطاقة.', 'success');
+        renderStudents();
+      }).catch(function (error) {
+        setBusy(save, false);
+        showError(error);
+      });
+    }
+    save.addEventListener('click', submit);
+    modal = ui.openModal('إلغاء البطاقة', h('div', { className: 'stack' }, [
+      ui.alertBox('سيُرفض استخدام هذه البطاقة مباشرة. لا يمكن التراجع.', 'warn'),
+      ui.labeled('الصاحب', h('input', { type: 'text', readOnly: true, value: card.ownerName + ' (' + card.ownerId + ')' })),
+      ui.labeled('السبب', reason)
+    ]), [
+      h('button', { className: 'btn', type: 'button', text: 'رجوع', onClick: function () { modal.close(); } }),
+      save
+    ], { narrow: true });
+  }
+
+  ui.renderStudents = renderStudents;
+  ui.openIssueCard = openIssueCard;
+})(window.SA);
+</script>

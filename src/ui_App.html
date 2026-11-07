@@ -1,0 +1,676 @@
+<script>
+/* نظام الحضور والانصراف 3.6 — نواة الواجهة: api() الوحيد، الجلسة، التنقل، الأدوات المشتركة. */
+window.SA = window.SA || {};
+(function (SA) {
+  'use strict';
+
+  var CFG = window.APP_CONFIG || {};
+  var TZ = 'Asia/Riyadh';
+  var TOKEN_KEY = 'sa36.session';
+  var ui = SA.ui = SA.ui || {};
+
+  var state = {
+    token: '', user: null, settings: null,
+    config: {
+      systemName: CFG.systemName || 'نظام الحضور والانصراف',
+      schoolName: CFG.schoolName || '',
+      version: CFG.version || '',
+      ssoAvailable: !!CFG.ssoAvailable
+    },
+    today: todayISO(), date: todayISO(), day: null,
+    view: 'home', viewToken: null,
+    scanMode: 'in', scanBusy: false, lastScan: null,
+    students: [], studentSearch: '', studentsTab: 'list',
+    cards: [], users: [], driversData: { drivers: [], students: [] },
+    trips: [], tripsDate: todayISO(), tripsTab: 'trips', tripId: null, trip: null, tripChoice: 'scan',
+    report: null, reportFilters: null,
+    settingsTab: 'general', auditLimit: 100, backupStatus: null,
+    modalStack: []
+  };
+
+  /* ---------- DOM ---------- */
+  function $(id) { return document.getElementById(id); }
+  function clear(node) { if (node) while (node.firstChild) node.removeChild(node.firstChild); }
+  function append(node, children) {
+    if (children === undefined || children === null || children === false) return node;
+    if (Array.isArray(children)) {
+      for (var i = 0; i < children.length; i++) append(node, children[i]);
+      return node;
+    }
+    if (children && children.nodeType) { node.appendChild(children); return node; }
+    node.appendChild(document.createTextNode(String(children)));
+    return node;
+  }
+  var BOOL = ['checked', 'disabled', 'selected', 'required', 'readOnly', 'multiple', 'muted', 'autoplay', 'playsInline'];
+  function h(tag, props, children) {
+    var node = document.createElement(tag);
+    props = props || {};
+    Object.keys(props).forEach(function (key) {
+      var value = props[key];
+      if (value === undefined || value === null || value === false) return;
+      if (key === 'className') node.className = value;
+      else if (key === 'text') node.textContent = String(value);
+      else if (key === 'htmlFor') node.htmlFor = value;
+      else if (key === 'value') node.value = value;
+      else if (key === 'style' && typeof value === 'object') Object.assign(node.style, value);
+      else if (key.slice(0, 2) === 'on' && typeof value === 'function') node.addEventListener(key.slice(2).toLowerCase(), value);
+      else if (BOOL.indexOf(key) >= 0) node[key] = !!value;
+      else node.setAttribute(key, value === true ? '' : String(value));
+    });
+    append(node, children);
+    return node;
+  }
+  function mount(target, children) { clear(target); append(target, children); return target; }
+  function show(node) { if (node) node.classList.remove('hidden'); }
+  function hide(node) { if (node) node.classList.add('hidden'); }
+
+  function todayISO() {
+    try {
+      return new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    } catch (ignored) {
+      var d = new Date();
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+  }
+  function nowTime() {
+    try {
+      return new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date());
+    } catch (ignored) { return '08:00'; }
+  }
+  function timeOf(value) {
+    return value && String(value).length >= 16 ? String(value).slice(11, 16) : '—';
+  }
+  function weekdayName(date) {
+    var names = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+    var day = new Date(String(date) + 'T12:00:00Z').getUTCDay();
+    return names[day] || '';
+  }
+  function monthStart(date) { return String(date).slice(0, 8) + '01'; }
+  function pct(value) { return value === null || value === undefined || value === '' ? '—' : value + '%'; }
+  function sizeKb(bytes) { return bytes ? Math.max(1, Math.round(bytes / 1024)) + ' ك.ب' : '—'; }
+
+  /* ---------- تسميات ---------- */
+  function statusLabel(value) {
+    return { pending: 'لم يحضر', present: 'حاضر', absent: 'غائب' }[value] || value || '—';
+  }
+  function statusBadge(value) { return h('span', { className: 'badge ' + (value || 'muted'), text: statusLabel(value) }); }
+  function methodLabel(value) {
+    return { qr: 'QR', manual: 'يدوي', driver: 'مع السائق', guardian: 'مع ولي الأمر', card: 'بطاقة' }[value] || (value || '—');
+  }
+  function tripStatusLabel(value) {
+    return { DRAFT: 'مسودة', CONFIRMED: 'مؤكدة', CANCELLED: 'ملغاة' }[value] || value || '—';
+  }
+  function tripStatusBadge(value) {
+    return h('span', { className: 'badge ' + (value === 'CONFIRMED' ? 'confirmed' : value === 'CANCELLED' ? 'cancelled' : 'draft'), text: tripStatusLabel(value) });
+  }
+  function tripStateBadge(value) {
+    var cls = value === 'scanned' || value === 'guardian' ? 'present' : value === 'absent' ? 'absent' : 'pending';
+    var label = { pending: 'بانتظار', scanned: 'مسجّل', guardian: 'مع ولي الأمر', absent: 'غائب' }[value] || value;
+    return h('span', { className: 'badge ' + cls, text: label });
+  }
+  function cardTypeLabel(value) { return { STUDENT: 'طالب', DRIVER: 'سائق', USER: 'مستخدم' }[value] || value; }
+  function roleLabel(value) { return { admin: 'مدير النظام', gate: 'المعلم المناوب', registrar: 'مسؤول الطلاب', viewer: 'مدير المدرسة' }[value] || value; }
+  function directionLabel(value) { return value === 'out' ? 'انصراف' : 'حضور'; }
+  function yesNo(value) { return value ? 'نعم' : 'لا'; }
+
+  /* ---------- عناصر واجهة ---------- */
+  function badge(text, cls) { return h('span', { className: 'badge ' + (cls || 'muted'), text: String(text) }); }
+  function stat(label, value, cls) {
+    return h('div', { className: 'stat ' + (cls || '') }, [
+      h('div', { className: 'stat-value', text: String(value == null ? '—' : value) }),
+      h('div', { className: 'stat-label', text: label })
+    ]);
+  }
+  function alertBox(message, type) { return h('div', { className: 'alert ' + (type || ''), role: 'alert', text: message }); }
+  function loadingRow(text) { return h('div', { className: 'loading-row' }, [h('span', { className: 'spinner', 'aria-hidden': 'true' }), h('span', { text: text || 'جارٍ التحميل…' })]); }
+  function pageHead(title, subtitle, actions) {
+    return h('div', { className: 'page-head' }, [
+      h('div', {}, [h('h2', { text: title }), subtitle ? h('p', { className: 'sub', text: subtitle }) : null]),
+      h('span', { className: 'spacer' }),
+      h('div', { className: 'btn-row' }, actions || [])
+    ]);
+  }
+  function card(title, subtitle, actions, body) {
+    return h('div', { className: 'card' }, [
+      title ? h('div', { className: 'card-head' }, [h('h3', { text: title }), h('span', { className: 'spacer' }), h('div', { className: 'btn-row' }, actions || [])]) : null,
+      subtitle ? h('p', { className: 'card-sub', text: subtitle }) : null,
+      body || null
+    ]);
+  }
+  function labeled(labelText, control, hint) {
+    if (!control.id) control.id = 'fld_' + Math.random().toString(36).slice(2, 9);
+    return h('div', { className: 'field' }, [
+      h('label', { htmlFor: control.id, text: labelText }),
+      control,
+      hint ? h('span', { className: 'hint', text: hint }) : null
+    ]);
+  }
+  function selectEl(options, value, onChange, attrs) {
+    var sel = h('select', Object.assign({}, attrs || {}, {
+      onChange: function (event) { if (onChange) onChange(event.target.value, event); }
+    }));
+    options.forEach(function (option) {
+      sel.appendChild(h('option', { value: option.value, selected: String(option.value) === String(value) }, option.label));
+    });
+    sel.value = String(value);
+    return sel;
+  }
+  function segmented(options, value, onPick) {
+    return h('div', { className: 'segmented', role: 'group' }, options.map(function (option) {
+      return h('button', {
+        type: 'button',
+        className: String(option.value) === String(value) ? 'active' + (option.activeClass ? ' ' + option.activeClass : '') : '',
+        onClick: function () { onPick(option.value); },
+        text: option.label
+      });
+    }));
+  }
+  function subnav(tabs, active, onPick) {
+    return h('div', { className: 'subnav' }, tabs.map(function (tab) {
+      return h('button', {
+        type: 'button',
+        className: tab.id === active ? 'active' : '',
+        onClick: function () { onPick(tab.id); },
+        text: tab.label
+      });
+    }));
+  }
+  function emptyState(title, hint) {
+    return h('div', { className: 'empty' }, [h('strong', { text: title || 'لا توجد بيانات' }), hint ? h('span', { text: hint }) : null]);
+  }
+  function dataTable(columns, rows, options) {
+    options = options || {};
+    if (!rows || !rows.length) return emptyState(options.emptyTitle, options.emptyHint);
+    return h('div', { className: 'table-wrap' }, h('table', { className: 'data' }, [
+      h('thead', {}, h('tr', {}, columns.map(function (column) {
+        return h('th', { className: column.align === 'center' ? 'num' : '', text: column.label });
+      }))),
+      h('tbody', {}, rows.map(function (row) {
+        return h('tr', {}, columns.map(function (column) {
+          var td = h('td', { className: (column.align === 'center' ? 'num ' : '') + (column.className || '') });
+          append(td, column.value ? column.value(row) : '');
+          return td;
+        }));
+      }))
+    ]));
+  }
+  function setBusy(button, busy) {
+    if (!button) return;
+    button.disabled = !!busy;
+    if (busy) button.dataset.idleLabel = button.textContent;
+    else if (button.dataset.idleLabel) button.textContent = button.dataset.idleLabel;
+  }
+  function newView() { var token = {}; state.viewToken = token; return token; }
+  function stale(token) { return state.viewToken !== token; }
+  function loadJobs(jobs) {
+    var keys = Object.keys(jobs);
+    return Promise.all(keys.map(function (key) {
+      return jobs[key].then(function (value) { return { key: key, value: value }; });
+    })).then(function (list) {
+      var result = {};
+      list.forEach(function (entry) { result[entry.key] = entry.value; });
+      return result;
+    });
+  }
+
+  /* ---------- تنبيهات ونوافذ ---------- */
+  function toast(message, type) {
+    var box = $('toasts');
+    if (!box) return;
+    var node = h('div', { className: 'toast ' + (type || 'info'), role: 'status' }, [h('span', { text: message })]);
+    node.appendChild(h('button', { className: 'close', type: 'button', 'aria-label': 'إغلاق', text: '×', onClick: function () { if (node.parentNode) node.parentNode.removeChild(node); } }));
+    box.appendChild(node);
+    setTimeout(function () { if (node.parentNode) node.parentNode.removeChild(node); }, type === 'error' ? 9000 : 4800);
+  }
+  function openModal(title, body, footer, options) {
+    options = options || {};
+    var overlay = h('div', { className: 'modal-overlay' });
+    var cardEl = h('div', { className: 'modal-card' + (options.wide ? ' wide' : '') + (options.narrow ? ' narrow' : '') });
+    var head = h('div', { className: 'modal-head' }, [h('h3', { text: title })]);
+    var bodyEl = h('div', { className: 'modal-body' }, body);
+    var closed = false;
+    function close() {
+      if (closed) return;
+      closed = true;
+      var index = state.modalStack.indexOf(close);
+      if (index >= 0) state.modalStack.splice(index, 1);
+      document.removeEventListener('keydown', onKey);
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      if (options.onClose) { try { options.onClose(); } catch (ignored) { /* لا يمنع الإغلاق */ } }
+    }
+    function onKey(event) { if (event.key === 'Escape' && !options.locked) close(); }
+    if (!options.locked) head.appendChild(h('button', { className: 'btn ghost sm', type: 'button', onClick: close, text: 'إغلاق' }));
+    cardEl.appendChild(head);
+    cardEl.appendChild(bodyEl);
+    if (footer && footer.length) cardEl.appendChild(h('div', { className: 'modal-foot' }, footer));
+    overlay.appendChild(cardEl);
+    overlay.addEventListener('mousedown', function (event) { if (event.target === overlay && !options.locked) close(); });
+    document.addEventListener('keydown', onKey);
+    state.modalStack.push(close);
+    $('modalRoot').appendChild(overlay);
+    var focusable = bodyEl.querySelector('input, select, textarea, button');
+    if (focusable) setTimeout(function () { try { focusable.focus(); } catch (ignored) { /* متصفح قديم */ } }, 40);
+    return { close: close, body: bodyEl, card: cardEl };
+  }
+  function closeAllModals() {
+    while (state.modalStack.length) {
+      try { state.modalStack[state.modalStack.length - 1](); } catch (ignored) { break; }
+    }
+    clear($('modalRoot'));
+  }
+  function confirmAction(message, label, options) {
+    options = options || {};
+    return new Promise(function (resolve) {
+      var modal;
+      function done(value) { modal.close(); resolve(value); }
+      modal = openModal(options.title || 'تأكيد العملية', [h('p', { text: message })], [
+        h('button', { className: 'btn', type: 'button', onClick: function () { done(false); }, text: 'إلغاء' }),
+        h('button', { className: 'btn ' + (options.danger ? 'danger' : 'primary'), type: 'button', onClick: function () { done(true); }, text: label || 'تأكيد' })
+      ], { narrow: true, onClose: function () { resolve(false); } });
+    });
+  }
+
+  /* ---------- الاتصال والخادم ---------- */
+  function setConnection(status) {
+    var el = $('connectionBadge');
+    if (!el) return;
+    el.className = 'conn is-' + status;
+    var label = { idle: 'جاري الاتصال', busy: 'جاري الاتصال', online: 'متصل', offline: 'فشل الاتصال' }[status] || 'جاري الاتصال';
+    var text = el.querySelector('.conn-label');
+    if (text) text.textContent = label;
+  }
+  function apiError(code, message, details) {
+    var error = new Error(message || 'تعذر تنفيذ العملية.');
+    error.code = code || 'INTERNAL';
+    error.details = details || null;
+    return error;
+  }
+  function requestId() {
+    return 'rq_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+  }
+  function api(action, payload, options) {
+    options = options || {};
+    return new Promise(function (resolve, reject) {
+      var settled = false;
+      var timer = null;
+      function finish(fn, value) {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        fn(value);
+      }
+      if (!window.google || !window.google.script || !window.google.script.run) {
+        setConnection('offline');
+        finish(reject, apiError('NETWORK', 'تعذر الاتصال بالخادم. افتح النظام من رابط النشر.'));
+        return;
+      }
+      setConnection('busy');
+      timer = setTimeout(function () {
+        setConnection('offline');
+        finish(reject, apiError('NETWORK', 'انتهت مهلة الاتصال بالخادم. تحقق من الشبكة وأعد المحاولة.'));
+      }, options.timeoutMs || 30000);
+      var request = { action: action, token: state.token || '', payload: payload || {}, requestId: requestId() };
+      try {
+        google.script.run
+          .withSuccessHandler(function (response) {
+            if (!response || typeof response !== 'object' || typeof response.success !== 'boolean') {
+              setConnection('offline');
+              finish(reject, apiError('INTERNAL', 'استجابة الخادم غير صحيحة.'));
+              return;
+            }
+            setConnection('online');
+            if (response.success) { finish(resolve, response.data); return; }
+            var error = apiError(response.code, response.message, response.details);
+            if (response.code === 'SESSION_EXPIRED') sessionExpired(error);
+            finish(reject, error);
+          })
+          .withFailureHandler(function (failure) {
+            setConnection('offline');
+            var message = failure && failure.message ? 'تعذر الاتصال بالخادم: ' + failure.message : 'تعذر الاتصال بالخادم.';
+            finish(reject, apiError('NETWORK', message));
+          })
+          .api(request);
+      } catch (error) {
+        setConnection('offline');
+        finish(reject, apiError('NETWORK', 'تعذر إرسال الطلب إلى الخادم.'));
+      }
+    });
+  }
+  function showError(error) {
+    if (!error) return;
+    if (error.code === 'SESSION_EXPIRED') return;
+    if (error.code === 'PASSWORD_CHANGE_REQUIRED') { openPasswordDialog(true); return; }
+    toast(error.message || 'تعذر تنفيذ العملية.', 'error');
+  }
+
+  /* ---------- الجلسة ---------- */
+  function saveToken(token) { state.token = token || ''; try { sessionStorage.setItem(TOKEN_KEY, state.token); } catch (ignored) { /* تخزين مؤقت */ } }
+  function readToken() { try { return sessionStorage.getItem(TOKEN_KEY) || ''; } catch (ignored) { return ''; } }
+  function clearToken() { state.token = ''; try { sessionStorage.removeItem(TOKEN_KEY); } catch (ignored) { /* تجاهل */ } }
+  function can(permission) { return !!state.user && (state.user.permissions || []).indexOf(permission) >= 0; }
+  function sessionExpired(error) {
+    clearToken();
+    state.user = null;
+    closeAllModals();
+    showLogin(error && error.message ? error.message : 'انتهت الجلسة. سجّل الدخول من جديد.');
+  }
+
+  /* ---------- الدخول ---------- */
+  function setLoginAlert(message, type) {
+    var box = $('loginAlert');
+    if (!box) return;
+    if (!message) { box.className = 'alert hidden'; box.textContent = ''; return; }
+    box.className = 'alert ' + (type || 'error');
+    box.textContent = message;
+  }
+  function applyBranding() {
+    var cfg = state.config || {};
+    var name = cfg.systemName || 'نظام الحضور والانصراف';
+    document.title = name;
+    if ($('loginSystemName')) $('loginSystemName').textContent = name;
+    if ($('loginSchoolName')) $('loginSchoolName').textContent = cfg.schoolName || '';
+    if ($('appSystemName')) $('appSystemName').textContent = name;
+    if ($('appSchoolName')) $('appSchoolName').textContent = cfg.schoolName || '';
+    if ($('loginVersion')) $('loginVersion').textContent = cfg.version ? 'الإصدار ' + cfg.version : '';
+    if ($('loginGoogle')) $('loginGoogle').classList.toggle('hidden', !cfg.ssoAvailable);
+  }
+  function showLogin(message) {
+    clearToken();
+    state.user = null;
+    closeAllModals();
+    hide($('bootScreen'));
+    hide($('appShell'));
+    show($('loginScreen'));
+    setLoginAlert(message || '', message ? 'error' : null);
+    if (!message && $('loginUsername')) { try { $('loginUsername').focus(); } catch (ignored) { /* تجاهل */ } }
+  }
+  function enterApp(data, token) {
+    if (token) saveToken(token);
+    state.user = data.user || null;
+    state.settings = data.settings || state.settings;
+    state.today = data.today || state.today;
+    if (!state.date || state.date > state.today) state.date = state.today;
+    state.tripsDate = state.today;
+    hide($('bootScreen'));
+    hide($('loginScreen'));
+    show($('appShell'));
+    setLoginAlert('');
+    applyBranding();
+    if ($('userChip') && state.user) $('userChip').textContent = state.user.name + ' • ' + state.user.roleLabel;
+    if (state.user && state.user.mustChange) {
+      mount($('main'), [pageHead('تغيير كلمة المرور', 'كلمة المرور الحالية مؤقتة ويجب تغييرها قبل استخدام النظام.'), alertBox('اختر كلمة مرور جديدة لا تقل عن 8 خانات.', 'warn')]);
+      openPasswordDialog(true);
+      return;
+    }
+    renderNav();
+    renderView();
+  }
+  function afterLogin(data) {
+    if (!data || !data.token || !data.user) { showLogin('استجابة الدخول غير مكتملة.'); return; }
+    enterApp(data, data.token);
+  }
+  function submitPasswordLogin() {
+    var username = $('loginUsername').value.trim();
+    var password = $('loginPassword').value;
+    var button = $('loginSubmit');
+    if (!username || !password) { setLoginAlert('أدخل اسم المستخدم وكلمة المرور.', 'error'); return; }
+    setBusy(button, true);
+    api('login', { username: username, password: password }).then(function (data) {
+      setBusy(button, false);
+      $('loginPassword').value = '';
+      afterLogin(data);
+    }).catch(function (error) {
+      setBusy(button, false);
+      setLoginAlert(error.message, 'error');
+      showError(error);
+    });
+  }
+  function submitCardLogin() {
+    var token = $('loginCardToken').value.trim();
+    var button = $('loginCardSubmit');
+    if (!token) { setLoginAlert('امسح بطاقة الدخول أو الصق رمزها.', 'error'); return; }
+    setBusy(button, true);
+    api('loginCard', { token: token }).then(function (data) {
+      setBusy(button, false);
+      $('loginCardToken').value = '';
+      afterLogin(data);
+    }).catch(function (error) {
+      setBusy(button, false);
+      setLoginAlert(error.message, 'error');
+      showError(error);
+    });
+  }
+  function submitGoogleLogin() {
+    var button = $('loginGoogle');
+    setBusy(button, true);
+    api('loginGoogle', {}).then(function (data) {
+      setBusy(button, false);
+      afterLogin(data);
+    }).catch(function (error) {
+      setBusy(button, false);
+      setLoginAlert(error.message, 'error');
+      showError(error);
+    });
+  }
+  function openPasswordDialog(forced) {
+    var current = h('input', { type: 'password', dir: 'ltr', autocomplete: 'current-password', required: true, placeholder: '••••••••' });
+    var next = h('input', { type: 'password', dir: 'ltr', autocomplete: 'new-password', required: true, placeholder: '8 خانات على الأقل' });
+    var confirm = h('input', { type: 'password', dir: 'ltr', autocomplete: 'new-password', required: true, placeholder: 'أعد كتابة كلمة المرور' });
+    var save = h('button', { className: 'btn primary', type: 'button', text: 'حفظ كلمة المرور' });
+    var modal;
+    function submit() {
+      if (next.value.length < 8) { toast('كلمة المرور 8 خانات على الأقل.', 'error'); return; }
+      if (next.value !== confirm.value) { toast('تأكيد كلمة المرور لا يطابق.', 'error'); return; }
+      setBusy(save, true);
+      api('changePassword', { currentPassword: current.value, newPassword: next.value }).then(function () {
+        toast('تم تغيير كلمة المرور. سجّل الدخول من جديد.', 'success');
+        modal.close();
+        showLogin('تم تغيير كلمة المرور. سجّل الدخول بكلمة المرور الجديدة.');
+      }).catch(function (error) {
+        setBusy(save, false);
+        showError(error);
+      });
+    }
+    save.addEventListener('click', submit);
+    var footer = [];
+    if (!forced) footer.push(h('button', { className: 'btn', type: 'button', onClick: function () { modal.close(); }, text: 'إلغاء' }));
+    footer.push(save);
+    modal = openModal(forced ? 'تغيير كلمة المرور المؤقتة' : 'تغيير كلمة المرور', h('div', { className: 'stack' }, [
+      forced ? alertBox('هذه أول مرة تدخل فيها أو أُعيدت كلمة مرورك. اختر كلمة مرور جديدة الآن.', 'warn') : null,
+      labeled('كلمة المرور الحالية' + (forced ? ' (المؤقتة)' : ''), current),
+      labeled('كلمة المرور الجديدة', next, '8 خانات على الأقل.'),
+      labeled('تأكيد كلمة المرور الجديدة', confirm)
+    ]), footer, { locked: !!forced, narrow: true });
+  }
+  function logout() {
+    api('logout', {}).then(function () {
+      showLogin('تم تسجيل الخروج بنجاح.');
+    }).catch(function (error) {
+      if (error.code !== 'SESSION_EXPIRED') toast('تعذر إبلاغ الخادم بالخروج، لكن تم مسح الجلسة من هذا الجهاز.', 'warn');
+      showLogin('تم تسجيل الخروج.');
+    });
+  }
+  function refreshBootstrap() {
+    return api('bootstrap', {}).then(function (data) {
+      state.user = data.user;
+      state.settings = data.settings;
+      state.today = data.today;
+      if (state.date > state.today) state.date = state.today;
+      if ($('userChip')) $('userChip').textContent = state.user.name + ' • ' + state.user.roleLabel;
+      renderNav();
+      renderView();
+    });
+  }
+
+  /* ---------- التنقل ---------- */
+  var NAV = [
+    { id: 'home', label: 'الرئيسية', allowed: function () { return can('dashboard') || can('scan'); } },
+    { id: 'students', label: 'الطلاب', allowed: function () { return can('students.read'); } },
+    { id: 'trips', label: 'السائقون والرحلات', allowed: function () { return can('journeys.read') || can('journeys'); } },
+    { id: 'reports', label: 'التقارير', allowed: function () { return can('reports'); } },
+    { id: 'settings', label: 'الإعدادات', allowed: function () { return can('settings') || can('users') || can('backups') || can('restore') || can('audit'); } },
+    { id: 'logout', label: 'تسجيل الخروج', logout: true }
+  ];
+  function renderNav() {
+    var nav = $('mainNav');
+    if (!nav) return;
+    clear(nav);
+    NAV.forEach(function (item) {
+      if (item.logout) {
+        nav.appendChild(h('button', { className: 'nav-tab logout', type: 'button', onClick: logout, text: item.label }));
+        return;
+      }
+      if (!item.allowed()) return;
+      nav.appendChild(h('button', {
+        className: 'nav-tab' + (state.view === item.id ? ' active' : ''),
+        type: 'button',
+        onClick: function () { go(item.id); },
+        text: item.label
+      }));
+    });
+  }
+  function go(view) {
+    state.view = view;
+    renderNav();
+    renderView();
+  }
+  function renderView() {
+    switch (state.view) {
+      case 'students': if (ui.renderStudents) ui.renderStudents(); else ui.renderHome(); break;
+      case 'trips': if (ui.renderTrips) ui.renderTrips(); else ui.renderHome(); break;
+      case 'reports': if (ui.renderReports) ui.renderReports(); else ui.renderHome(); break;
+      case 'settings': if (ui.renderSettings) ui.renderSettings(); else ui.renderHome(); break;
+      default: ui.renderHome();
+    }
+  }
+
+  /* ---------- البطاقات والكاميرا ---------- */
+  function issueCardFor(type, ownerId, note) {
+    return api('issueCard', { type: type, ownerId: ownerId, note: note || '' }).then(function (result) {
+      showCardToken(result);
+      return result;
+    });
+  }
+  function showCardToken(result) {
+    var qr = null;
+    try {
+      qr = window.qrcode(0, 'M');
+      qr.addData(result.token);
+      qr.make();
+    } catch (error) { qr = null; }
+    var image = h('img', { alt: 'رمز QR للبطاقة', src: qr ? qr.createDataURL(6, 4) : '' });
+    var tokenInput = h('input', { type: 'text', readOnly: true, dir: 'ltr', className: 'mono', value: result.token });
+    var modal;
+    var copy = h('button', {
+      className: 'btn', type: 'button', text: 'نسخ الرمز', onClick: function () {
+        try { tokenInput.focus(); tokenInput.select(); document.execCommand('copy'); toast('تم نسخ الرمز.', 'success'); }
+        catch (ignored) { toast('انسخ الرمز يدويًا.', 'warn'); }
+      }
+    });
+    var print = h('button', { className: 'btn', type: 'button', text: 'طباعة', onClick: function () { window.print(); } });
+    var close = h('button', { className: 'btn primary', type: 'button', text: 'تم', onClick: function () { modal.close(); } });
+    modal = openModal('بطاقة ' + cardTypeLabel(result.card.type) + ' — ' + (result.card.ownerName || result.card.ownerId), h('div', { className: 'qr-box' }, [
+      image,
+      h('div', { className: 'qr-token', text: result.token }),
+      tokenInput,
+      h('div', { className: 'guard-note', text: 'هذا الرمز يظهر مرة واحدة فقط. اطبعه أو احفظه الآن؛ لا يمكن استرجاعه لاحقًا. عند فقدانه أصدر بطاقة بديلة تُلغي السابقة.' }),
+      result.revoked ? h('div', { className: 'alert warn', text: 'تم إلغاء ' + result.revoked + ' بطاقة نشطة سابقة لهذا الصاحب.' }) : null
+    ]), [copy, print, close], { narrow: true });
+  }
+  function openCamera(title, onResult) {
+    if (!window.ZXingBrowser || !window.ZXingBrowser.BrowserQRCodeReader) {
+      toast('قارئ الكاميرا غير متاح في هذا المتصفح. استخدم قارئ الباركود أو الإدخال اليدوي.', 'warn');
+      return;
+    }
+    var video = h('video', { playsInline: true, muted: true });
+    var hint = h('div', { className: 'camera-hint', text: 'وجّه الكاميرا نحو رمز QR…' });
+    var controls = null;
+    var stopped = false;
+    function stop() {
+      if (stopped) return;
+      stopped = true;
+      if (controls && controls.stop) { try { controls.stop(); } catch (ignored) { /* توقف مسبق */ } }
+    }
+    var modal = openModal(title, [
+      h('div', { className: 'camera-stage' }, [video, hint]),
+      h('p', { className: 'hint', text: 'إن لم تعمل الكاميرا فاستخدم قارئ الباركود أو أدخل الرمز يدويًا.' })
+    ], [h('button', { className: 'btn', type: 'button', text: 'إغلاق', onClick: function () { modal.close(); } })], { wide: true, onClose: stop });
+    try {
+      var reader = new window.ZXingBrowser.BrowserQRCodeReader();
+      reader.decodeFromVideoDevice(undefined, video, function (result, error, ctrl) {
+        if (ctrl) controls = ctrl;
+        if (result && !stopped) {
+          var text = result.getText();
+          stop();
+          modal.close();
+          if (onResult) onResult(text);
+        }
+      }).then(function (ctrl) { controls = ctrl; }).catch(function () {
+        hint.textContent = 'تعذر تشغيل الكاميرا. تحقق من الصلاحيات أو استخدم الإدخال اليدوي.';
+        toast('تعذر تشغيل الكاميرا.', 'error');
+      });
+    } catch (error) {
+      hint.textContent = 'تعذر تشغيل الكاميرا.';
+      toast('تعذر تشغيل الكاميرا.', 'error');
+    }
+  }
+
+  /* ---------- الإقلاع ---------- */
+  function boot() {
+    setConnection('busy');
+    api('publicConfig', {}).then(function (config) {
+      state.config = {
+        systemName: config.systemName || state.config.systemName,
+        schoolName: config.schoolName || '',
+        version: config.version || '',
+        ssoAvailable: !!config.ssoAvailable
+      };
+      applyBranding();
+      var token = readToken();
+      if (!token) { showLogin(); return; }
+      state.token = token;
+      api('bootstrap', {}).then(function (data) {
+        enterApp(data);
+      }).catch(function (error) {
+        clearToken();
+        showLogin(error.code === 'SESSION_EXPIRED' ? 'انتهت الجلسة السابقة. سجّل الدخول من جديد.' : error.message);
+      });
+    }).catch(function (error) {
+      showLogin(error.message || 'تعذر الاتصال بالخادم.');
+    });
+
+    var passwordForm = $('loginPasswordForm');
+    if (passwordForm) passwordForm.addEventListener('submit', function (event) { event.preventDefault(); submitPasswordLogin(); });
+    var cardForm = $('loginCardForm');
+    if (cardForm) cardForm.addEventListener('submit', function (event) { event.preventDefault(); submitCardLogin(); });
+    if ($('loginGoogle')) $('loginGoogle').addEventListener('click', submitGoogleLogin);
+    if ($('loginCardCamera')) $('loginCardCamera').addEventListener('click', function () {
+      openCamera('مسح بطاقة الدخول', function (text) { $('loginCardToken').value = text; submitCardLogin(); });
+    });
+    if ($('toggleLoginPassword')) $('toggleLoginPassword').addEventListener('click', function () {
+      var input = $('loginPassword');
+      var showing = input.type === 'text';
+      input.type = showing ? 'password' : 'text';
+      this.textContent = showing ? 'إظهار' : 'إخفاء';
+    });
+  }
+
+  /* ---------- تصدير النواة ---------- */
+  ui.state = state;
+  ui.h = h; ui.append = append; ui.clear = clear; ui.$ = $; ui.mount = mount;
+  ui.todayISO = todayISO; ui.nowTime = nowTime; ui.timeOf = timeOf; ui.weekdayName = weekdayName;
+  ui.monthStart = monthStart; ui.pct = pct; ui.sizeKb = sizeKb;
+  ui.badge = badge; ui.statusLabel = statusLabel; ui.statusBadge = statusBadge; ui.methodLabel = methodLabel;
+  ui.tripStatusLabel = tripStatusLabel; ui.tripStatusBadge = tripStatusBadge; ui.tripStateBadge = tripStateBadge;
+  ui.cardTypeLabel = cardTypeLabel; ui.roleLabel = roleLabel; ui.directionLabel = directionLabel; ui.yesNo = yesNo;
+  ui.stat = stat; ui.alertBox = alertBox; ui.loadingRow = loadingRow; ui.pageHead = pageHead; ui.card = card;
+  ui.labeled = labeled; ui.selectEl = selectEl; ui.segmented = segmented; ui.subnav = subnav; ui.emptyState = emptyState;
+  ui.dataTable = dataTable; ui.setBusy = setBusy; ui.newView = newView; ui.stale = stale; ui.loadJobs = loadJobs;
+  ui.toast = toast; ui.openModal = openModal; ui.closeAllModals = closeAllModals; ui.confirmAction = confirmAction;
+  ui.api = api; ui.showError = showError; ui.can = can; ui.setConnection = setConnection;
+  ui.saveToken = saveToken; ui.clearToken = clearToken; ui.issueCardFor = issueCardFor; ui.showCardToken = showCardToken;
+  ui.openCamera = openCamera; ui.openPasswordDialog = openPasswordDialog; ui.refreshBootstrap = refreshBootstrap;
+  ui.showLogin = showLogin; ui.logout = logout; ui.applyBranding = applyBranding; ui.renderView = renderView;
+  SA.boot = boot;
+})(window.SA);
+</script>

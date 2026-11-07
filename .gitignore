@@ -1,0 +1,10 @@
+node_modules/
+.clasp.json
+.clasprc.json
+*.log
+dist/
+tmp/
+tools/.vendor.js
+.DS_Store
+# حزمة التسليم/المرجع القديمة تبقى محليًا ولا تُخلط مع المصدر.
+school-attendance-v3.6/

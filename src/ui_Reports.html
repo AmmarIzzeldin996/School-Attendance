@@ -1,0 +1,303 @@
+<script>
+/* التقارير: ثمانية أنواع، تصفية، ملخص، وعرض محدود مع تصدير CSV كامل. */
+(function (SA) {
+  'use strict';
+  var ui = SA.ui;
+  var state = ui.state;
+  var h = ui.h, api = ui.api, can = ui.can, mount = ui.mount, toast = ui.toast, showError = ui.showError;
+  var newView = ui.newView, stale = ui.stale, setBusy = ui.setBusy;
+  var MAX_ROWS = 500;
+
+  var TYPES = [
+    { value: 'daily', label: 'الحضور اليومي' },
+    { value: 'monthly', label: 'ملخص الأيام' },
+    { value: 'student', label: 'حضور الطلاب' },
+    { value: 'class', label: 'حضور الصفوف' },
+    { value: 'method', label: 'طرق التسجيل' },
+    { value: 'absence', label: 'الغياب' },
+    { value: 'driver', label: 'رحلات السائقين' },
+    { value: 'trips', label: 'كل الرحلات' }
+  ];
+  var STATUS_OPTIONS = [
+    { value: '', label: 'كل الحالات' },
+    { value: 'present', label: 'حاضر' },
+    { value: 'departed', label: 'سجّل انصرافه' },
+    { value: 'absent', label: 'غائب (يوم مغلق)' }
+  ];
+  var METHOD_OPTIONS = [
+    { value: '', label: 'كل الطرق' },
+    { value: 'qr', label: 'QR' },
+    { value: 'manual', label: 'يدوي' },
+    { value: 'driver', label: 'مع السائق' },
+    { value: 'guardian', label: 'مع ولي الأمر' }
+  ];
+
+  function defaultFilters() {
+    return {
+      type: 'daily',
+      from: ui.monthStart(state.today),
+      to: state.today,
+      classroom: '',
+      studentId: '',
+      method: '',
+      status: '',
+      driverCode: ''
+    };
+  }
+
+  function renderReports() {
+    if (!state.reportFilters) state.reportFilters = defaultFilters();
+    var token = newView();
+    var filters = state.reportFilters;
+    mount(ui.$('main'), [
+      ui.pageHead('التقارير', 'نسب الحضور تُحسب من الأيام المغلقة فقط'),
+      filtersCard(token),
+      h('div', { id: 'reportResult' }, state.report ? reportResult(state.report) : ui.emptyState('لم يُشغَّل تقرير بعد', 'اختر النوع والفترة ثم اضغط «عرض التقرير».'))
+    ]);
+    if (!state.report) runReport(token);
+  }
+
+  function filtersCard(token) {
+    var filters = state.reportFilters;
+    var typeSelect = ui.selectEl(TYPES, filters.type, function (value) {
+      filters.type = value;
+      drawFilters(token);
+    });
+    var fromInput = h('input', { type: 'date', value: filters.from, max: state.today });
+    var toInput = h('input', { type: 'date', value: filters.to, max: state.today });
+    var classroomSelect = ui.selectEl([{ value: '', label: 'كل الصفوف' }].concat(((state.settings && state.settings.classrooms) || []).map(function (name) {
+      return { value: name, label: name };
+    })), filters.classroom, null);
+    var studentInput = h('input', { type: 'text', dir: 'ltr', placeholder: 'رقم الطالب', value: filters.studentId, maxlength: 30 });
+    var methodSelect = ui.selectEl(METHOD_OPTIONS, filters.method, null);
+    var statusSelect = ui.selectEl(STATUS_OPTIONS, filters.status, null);
+    var driverInput = h('input', { type: 'text', dir: 'ltr', placeholder: 'رقم السائق (9001)', value: filters.driverCode, maxlength: 10 });
+    var extrasHost = h('div', { className: 'grid cols-3' });
+    var run = h('button', { className: 'btn primary', type: 'button', text: 'عرض التقرير' });
+
+    function paintExtras() {
+      ui.clear(extrasHost);
+      if (['daily', 'student', 'class', 'absence'].indexOf(filters.type) >= 0) {
+        extrasHost.appendChild(ui.labeled('الصف', classroomSelect));
+      }
+      if (['daily', 'student', 'absence'].indexOf(filters.type) >= 0) {
+        extrasHost.appendChild(ui.labeled('رقم الطالب', studentInput));
+      }
+      if (['daily', 'method'].indexOf(filters.type) >= 0) {
+        extrasHost.appendChild(ui.labeled('طريقة التسجيل', methodSelect));
+      }
+      if (filters.type === 'daily') {
+        extrasHost.appendChild(ui.labeled('حالة السجل', statusSelect));
+      }
+      if (filters.type === 'driver') {
+        extrasHost.appendChild(ui.labeled('رقم السائق', driverInput));
+      }
+    }
+
+    function collect() {
+      filters.from = fromInput.value;
+      filters.to = toInput.value;
+      filters.classroom = classroomSelect.value;
+      filters.studentId = String(studentInput.value || '').trim();
+      filters.method = methodSelect.value;
+      filters.status = statusSelect.value;
+      filters.driverCode = String(driverInput.value || '').trim();
+      if (!filters.from || !filters.to) { toast('حدد بداية الفترة ونهايتها.', 'error'); return false; }
+      if (filters.from > filters.to) { toast('بداية الفترة بعد نهايتها.', 'error'); return false; }
+      if (filters.to > state.today) { toast('لا يمكن تقرير فترة مستقبلية.', 'error'); return false; }
+      return true;
+    }
+
+    function submit() {
+      if (!collect()) return;
+      setBusy(run, true);
+      runReport(null, function () { setBusy(run, false); });
+    }
+    run.addEventListener('click', submit);
+    paintExtras();
+
+    return ui.card('نطاق التقرير', 'أقصى فترة سنة واحدة. التصدير يشمل كل الصفوف حتى لو عُرض 500 فقط.', [run], h('div', { className: 'stack' }, [
+      h('div', { className: 'grid cols-3' }, [
+        ui.labeled('نوع التقرير', typeSelect),
+        ui.labeled('من تاريخ', fromInput),
+        ui.labeled('إلى تاريخ', toInput)
+      ]),
+      extrasHost
+    ]));
+  }
+
+  function drawFilters(token) {
+    if (stale(token)) return;
+    mount(ui.$('main'), [
+      ui.pageHead('التقارير', 'نسب الحضور تُحسب من الأيام المغلقة فقط'),
+      filtersCard(token),
+      h('div', { id: 'reportResult' }, state.report ? reportResult(state.report) : ui.emptyState('لم يُشغَّل تقرير بعد', 'اختر النوع والفترة ثم اضغط «عرض التقرير».'))
+    ]);
+  }
+
+  function runReport(token, done) {
+    var filters = state.reportFilters;
+    var host = ui.$('reportResult');
+    if (host) ui.mount(host, ui.loadingRow('جارٍ حساب التقرير…'));
+    api('getReport', {
+      type: filters.type, from: filters.from, to: filters.to,
+      classroom: filters.classroom || undefined,
+      studentId: filters.studentId || undefined,
+      method: filters.method || undefined,
+      status: filters.status || undefined,
+      driverCode: filters.driverCode || undefined
+    }).then(function (data) {
+      if (done) done();
+      state.report = data;
+      if (token && stale(token)) return;
+      var target = ui.$('reportResult');
+      if (target) ui.mount(target, reportResult(data));
+    }).catch(function (error) {
+      if (done) done();
+      if (token && stale(token)) return;
+      showError(error);
+      var target = ui.$('reportResult');
+      if (target) ui.mount(target, ui.alertBox(error.message, 'error'));
+    });
+  }
+
+  function summaryGrid(summary) {
+    return h('div', { className: 'summary-grid' }, [
+      ui.stat('أيام الفترة', summary.days || 0, 'info'),
+      ui.stat('أيام مغلقة', summary.closedDays || 0, 'warn'),
+      ui.stat('سجلات', summary.records || 0, 'info'),
+      ui.stat('حاضر', summary.present || 0, 'ok'),
+      ui.stat('غائب', summary.absent || 0, 'bad'),
+      ui.stat('سجّل انصرافه', summary.checkedOut || 0, 'info'),
+      ui.stat('متأخر', summary.late || 0, 'warn'),
+      ui.stat('نسبة الحضور', ui.pct(summary.percentage), '')
+    ]);
+  }
+
+  function columnsFor(type) {
+    var lateBadge = function (value) { return value ? ui.badge('متأخر', 'pending') : '—'; };
+    if (type === 'daily') return [
+      { label: 'التاريخ', value: function (row) { return row.date; } },
+      { label: 'الرقم', className: 'mono', value: function (row) { return row.id; } },
+      { label: 'الطالب', value: function (row) { return row.name; } },
+      { label: 'الصف', value: function (row) { return row.classroom; } },
+      { label: 'الحالة', value: function (row) { return ui.statusBadge(row.status); } },
+      { label: 'الحضور', value: function (row) { return ui.timeOf(row.inAt); } },
+      { label: 'الانصراف', value: function (row) { return ui.timeOf(row.outAt); } },
+      { label: 'الوصول', value: function (row) { return ui.methodLabel(row.inMethod); } },
+      { label: 'الانصراف', value: function (row) { return ui.methodLabel(row.outMethod); } },
+      { label: 'التأخر', value: function (row) { return lateBadge(row.late); } }
+    ];
+    if (type === 'monthly') return [
+      { label: 'التاريخ', value: function (row) { return row.date; } },
+      { label: 'الإجمالي', align: 'center', value: function (row) { return row.total; } },
+      { label: 'حاضر', align: 'center', value: function (row) { return row.present; } },
+      { label: 'غائب', align: 'center', value: function (row) { return row.absent; } },
+      { label: 'انصراف', align: 'center', value: function (row) { return row.checkedOut; } },
+      { label: 'متأخر', align: 'center', value: function (row) { return row.late; } },
+      { label: 'النسبة', align: 'center', value: function (row) { return ui.pct(row.percentage); } },
+      { label: 'الحالة', value: function (row) { return ui.badge(row.closed ? 'مغلق' : 'مفتوح', row.closed ? 'active' : 'pending'); } }
+    ];
+    if (type === 'student' || type === 'class') return [
+      type === 'student' ? { label: 'الرقم', className: 'mono', value: function (row) { return row.id; } } : { label: 'الصف', value: function (row) { return row.name; } },
+      type === 'student' ? { label: 'الطالب', value: function (row) { return row.name; } } : null,
+      type === 'student' ? { label: 'الصف', value: function (row) { return row.classroom; } } : null,
+      { label: 'الإجمالي', align: 'center', value: function (row) { return row.total; } },
+      { label: 'حاضر', align: 'center', value: function (row) { return row.present; } },
+      { label: 'غائب', align: 'center', value: function (row) { return row.absent; } },
+      { label: 'انصراف', align: 'center', value: function (row) { return row.checkedOut; } },
+      { label: 'متأخر', align: 'center', value: function (row) { return row.late; } },
+      { label: 'النسبة', align: 'center', value: function (row) { return ui.pct(row.percentage); } }
+    ].filter(Boolean);
+    if (type === 'method') return [
+      { label: 'الاتجاه', value: function (row) { return ui.directionLabel(row.direction); } },
+      { label: 'الطريقة', value: function (row) { return ui.methodLabel(row.method); } },
+      { label: 'العدد', align: 'center', value: function (row) { return row.count; } }
+    ];
+    if (type === 'absence') return [
+      { label: 'التاريخ', value: function (row) { return row.date; } },
+      { label: 'الرقم', className: 'mono', value: function (row) { return row.id; } },
+      { label: 'الطالب', value: function (row) { return row.name; } },
+      { label: 'الصف', value: function (row) { return row.classroom; } },
+      { label: 'الحالة', value: function (row) { return ui.statusBadge('absent'); } }
+    ];
+    return [
+      { label: 'التاريخ', value: function (row) { return row.date; } },
+      { label: 'السائق', value: function (row) { return row.driverName + ' (' + row.driverCode + ')'; } },
+      { label: 'النوع', value: function (row) { return ui.badge(row.mode === 'in' ? 'حضور' : 'انصراف', row.mode === 'in' ? 'info' : 'draft'); } },
+      { label: 'إجمالي', align: 'center', value: function (row) { return row.total; } },
+      { label: 'مطبّق', align: 'center', value: function (row) { return row.applied; } },
+      { label: 'التأكيد', value: function (row) { return ui.timeOf(row.confirmedAt); } }
+    ];
+  }
+
+  function rowValue(row, key) {
+    if (key === 'inMethod' || key === 'outMethod') return ui.methodLabel(row[key]);
+    if (key === 'direction') return ui.directionLabel(row[key]);
+    if (key === 'status') return ui.statusLabel(row[key]);
+    if (key === 'mode') return row[key] === 'in' ? 'حضور' : 'انصراف';
+    if (key === 'late' || key === 'closed') return ui.yesNo(row[key]);
+    return row[key] === undefined || row[key] === null ? '' : row[key];
+  }
+
+  var ROW_LABELS = {
+    date: 'التاريخ', id: 'الرقم', name: 'الاسم', classroom: 'الصف', status: 'الحالة',
+    inAt: 'الحضور', outAt: 'الانصراف', inMethod: 'طريقة الوصول', outMethod: 'طريقة الانصراف',
+    late: 'متأخر', total: 'الإجمالي', present: 'حاضر', absent: 'غائب', checkedOut: 'انصراف',
+    percentage: 'النسبة', closed: 'مغلق', direction: 'الاتجاه', method: 'الطريقة', count: 'العدد',
+    tripId: 'معرّف الرحلة', driverCode: 'رقم السائق', driverName: 'السائق', mode: 'النوع',
+    applied: 'مطبّق', confirmedAt: 'التأكيد'
+  };
+
+  function csvCell(value) {
+    var text = String(value === undefined || value === null ? '' : value);
+    return /[",\r\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+  }
+
+  function exportCsv(data) {
+    var keys = data.rows.length ? Object.keys(data.rows[0]) : [];
+    if (!keys.length) { toast('لا توجد صفوف للتصدير.', 'warn'); return; }
+    var lines = [keys.map(function (key) { return csvCell(ROW_LABELS[key] || key); }).join(',')];
+    data.rows.forEach(function (row) {
+      lines.push(keys.map(function (key) { return csvCell(rowValue(row, key)); }).join(','));
+    });
+    var blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var link = h('a', { href: url, download: 'report-' + data.type + '-' + data.from + '_' + data.to + '.csv' });
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+    toast('تم تصدير ' + data.rows.length + ' صفًا.', 'success');
+  }
+
+  function reportResult(data) {
+    var rows = data.rows || [];
+    var shown = rows.slice(0, MAX_ROWS);
+    var exportButton = h('button', {
+      className: 'btn', type: 'button', text: 'تصدير CSV',
+      onClick: function () { exportCsv(data); }
+    });
+    return h('div', {}, [
+      summaryGrid(data.summary || {}),
+      ui.card(typeLabel(data.type) + ' — ' + data.from + ' إلى ' + data.to,
+        'حُسب في ' + ui.timeOf(data.generatedAt) + ' • التأخر بعد ' + data.lateAfter + ' • ' + rows.length + ' صف',
+        [exportButton],
+        h('div', {}, [
+          rows.length > MAX_ROWS ? ui.alertBox('يُعرض أول ' + MAX_ROWS + ' صف من ' + rows.length + '. التصدير يشمل كل الصفوف.', 'info') : null,
+          ui.dataTable(columnsFor(data.type), shown, {
+            emptyTitle: 'لا توجد بيانات في هذه الفترة',
+            emptyHint: 'جرّب توسيع الفترة أو إزالة التصفية. نسب الحضور تحتاج أيامًا مغلقة.'
+          })
+        ]))
+    ]);
+  }
+
+  function typeLabel(type) {
+    var match = TYPES.filter(function (item) { return item.value === type; })[0];
+    return match ? match.label : 'تقرير';
+  }
+
+  ui.renderReports = renderReports;
+})(window.SA);
+</script>

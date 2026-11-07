@@ -1,0 +1,248 @@
+<script>
+/* لوحة اليوم: المسح السريع، ملخص الحضور، جدول الطلاب، التصحيح، وإنهاء اليوم. */
+(function (SA) {
+  'use strict';
+  var ui = SA.ui;
+  var state = ui.state;
+  var h = ui.h, api = ui.api, can = ui.can, mount = ui.mount, toast = ui.toast, showError = ui.showError;
+  var newView = ui.newView, stale = ui.stale, setBusy = ui.setBusy;
+
+  function renderHome() {
+    var token = newView();
+    mount(ui.$('main'), ui.loadingRow('جارٍ تحميل سجل اليوم…'));
+    api('getDay', { date: state.date }).then(function (data) {
+      if (stale(token)) return;
+      state.day = data;
+      drawHome();
+    }).catch(function (error) {
+      if (stale(token)) return;
+      showError(error);
+      mount(ui.$('main'), [
+        ui.pageHead('لوحة اليوم', ''),
+        ui.alertBox(error.message, 'error'),
+        h('button', { className: 'btn', type: 'button', onClick: renderHome, text: 'إعادة المحاولة' })
+      ]);
+    });
+  }
+
+  function summaryGrid(summary) {
+    return h('div', { className: 'summary-grid' }, [
+      ui.stat('إجمالي الطلاب', summary.total || 0, 'info'),
+      ui.stat('حاضر', summary.present || 0, 'ok'),
+      ui.stat('غائب', summary.absent || 0, 'bad'),
+      ui.stat('لم يحضر بعد', summary.pending || 0, 'warn'),
+      ui.stat('سجّل انصرافه', summary.out || 0, 'info'),
+      ui.stat('لم ينصرف', summary.notOut || 0, 'warn'),
+      ui.stat('نسبة الحضور', ui.pct(summary.percentage), '')
+    ]);
+  }
+
+  function scanResultContent() {
+    var info = state.lastScan;
+    if (!info) return [h('span', { className: 'hint', text: 'جاهز للتسجيل. امسح البطاقة أو أدخل رقم الطالب.' })];
+    return [
+      h('strong', { text: info.title }),
+      h('div', { text: info.detail })
+    ];
+  }
+
+  function scanCard() {
+    var input = h('input', {
+      id: 'scanInput', type: 'text', dir: 'ltr', autocomplete: 'off',
+      placeholder: 'امسح بطاقة الطالب أو أدخل رقمه (4 أرقام)', 'aria-label': 'مدخل مسح الطالب'
+    });
+    var reason = h('input', {
+      id: 'scanReason', type: 'text', maxlength: 200,
+      placeholder: 'سبب التسجيل اليدوي (مطلوب عند إدخال الرقم)', 'aria-label': 'سبب التسجيل اليدوي'
+    });
+    var submit = h('button', { className: 'btn primary', type: 'submit', text: 'تسجيل' });
+    var result = h('div', { id: 'scanResult', className: 'scan-result' + (state.lastScan ? (state.lastScan.ok ? ' ok' : ' bad') : '') }, scanResultContent());
+    var camera = h('button', {
+      className: 'btn', type: 'button', text: 'الكاميرا',
+      onClick: function () {
+        ui.openCamera('مسح بطاقة الطالب', function (text) {
+          input.value = text;
+          performScan(text, reason.value, submit);
+        });
+      }
+    });
+    var form = h('form', {
+      className: 'scan-hero',
+      onSubmit: function (event) { event.preventDefault(); performScan(input.value, reason.value, submit); }
+    }, [
+      h('div', {}, [h('h3', { text: 'تسجيل سريع' }), h('div', { className: 'hint', text: 'الوصول والانصراف مستقلان؛ اختر نوع التسجيل ثم امسح البطاقة.' })]),
+      ui.segmented([
+        { value: 'in', label: 'حضور' },
+        { value: 'out', label: 'انصراف', activeClass: 'out' }
+      ], state.scanMode, function (value) { state.scanMode = value; drawHome(); }),
+      h('div', { className: 'input-action' }, [input, camera]),
+      reason,
+      h('div', { className: 'btn-row' }, [submit]),
+      result
+    ]);
+    return form;
+  }
+
+  function performScan(rawInput, reason, button) {
+    if (state.scanBusy) return;
+    var value = String(rawInput || '').trim();
+    if (!value) { toast('امسح البطاقة أو أدخل رقم الطالب.', 'warn'); return; }
+    state.scanBusy = true;
+    if (button && button.isConnected) setBusy(button, true);
+    api('scanStudent', {
+      mode: state.scanMode,
+      input: value,
+      reason: String(reason || '').trim()
+    }).then(function (data) {
+      state.scanBusy = false;
+      var modeText = data.mode === 'in' ? 'حضور' : 'انصراف';
+      var stamp = data.mode === 'in' ? data.record.inAt : data.record.outAt;
+      state.lastScan = {
+        ok: true,
+        title: data.student.name + ' — ' + modeText,
+        detail: 'الصف ' + data.student.classroom + ' • ' + ui.methodLabel(data.method) + ' • ' + ui.timeOf(stamp)
+      };
+      toast('تم تسجيل ' + modeText + ' للطالب ' + data.student.name + '.', 'success');
+      var token = state.viewToken;
+      api('getDay', { date: state.today }).then(function (day) {
+        if (stale(token)) return;
+        state.day = day;
+        state.date = state.today;
+        drawHome();
+      }).catch(showError);
+    }).catch(function (error) {
+      state.scanBusy = false;
+      if (button && button.isConnected) setBusy(button, false);
+      state.lastScan = { ok: false, title: 'تعذر التسجيل', detail: error.message + (error.code ? ' (' + error.code + ')' : '') };
+      showError(error);
+      var box = ui.$('scanResult');
+      if (box) {
+        box.className = 'scan-result bad';
+        ui.clear(box);
+        ui.append(box, scanResultContent());
+      }
+    });
+  }
+
+  function openCorrection(record) {
+    var field = ui.selectEl([
+      { value: 'in', label: 'تسجيل / تعديل وقت الحضور' },
+      { value: 'out', label: 'تسجيل / تعديل وقت الانصراف' },
+      { value: 'clearIn', label: 'مسح الحضور' },
+      { value: 'clearOut', label: 'مسح الانصراف' }
+    ], 'in', function () { toggleTime(); });
+    var time = h('input', { type: 'time', value: ui.nowTime() });
+    var reason = h('textarea', { maxlength: 300, placeholder: 'سبب التصحيح (5 أحرف على الأقل)' });
+    var timeField = ui.labeled('الوقت', time);
+    var save = h('button', { className: 'btn primary', type: 'button', text: 'حفظ التصحيح' });
+    var modal;
+    function toggleTime() {
+      var needsTime = field.value === 'in' || field.value === 'out';
+      timeField.classList.toggle('hidden', !needsTime);
+    }
+    function submit() {
+      if (String(reason.value || '').trim().length < 5) { toast('سبب التصحيح مطلوب (5 أحرف على الأقل).', 'error'); return; }
+      setBusy(save, true);
+      api('correctAttendance', {
+        date: state.date,
+        studentId: record.id,
+        field: field.value,
+        time: time.value,
+        reason: String(reason.value || '').trim()
+      }).then(function () {
+        modal.close();
+        toast('تم حفظ التصحيح. سيُسجَّل في سجل التدقيق.', 'success');
+        renderHome();
+      }).catch(function (error) {
+        setBusy(save, false);
+        showError(error);
+      });
+    }
+    save.addEventListener('click', submit);
+    modal = ui.openModal('تصحيح سجل — ' + record.name, h('div', { className: 'stack' }, [
+      ui.alertBox('التاريخ: ' + state.date + ' • الطالب: ' + record.name + ' (' + record.id + ')', 'info'),
+      ui.labeled('نوع التصحيح', field),
+      timeField,
+      ui.labeled('سبب التصحيح', reason, 'يُسجَّل السبب في سجل التدقيق ولا يمكن التراجع دون أثر.')
+    ]), [
+      h('button', { className: 'btn', type: 'button', text: 'إلغاء', onClick: function () { modal.close(); } }),
+      save
+    ], { narrow: true });
+    toggleTime();
+  }
+
+  function closeCurrentDay() {
+    ui.confirmAction('سيُعتبر كل طالب لم يسجّل حضوره غائبًا، ولن يمكن تسجيل الوصول بعد ذلك. هل تريد إنهاء حضور اليوم؟', 'إنهاء الحضور', { danger: true }).then(function (ok) {
+      if (!ok) return;
+      api('closeDay', {}).then(function (data) {
+        toast('تم إنهاء حضور اليوم. عدد الغائبين: ' + (data.absent || 0) + '.', 'success');
+        renderHome();
+      }).catch(showError);
+    });
+  }
+
+  function recordsCard(data) {
+    var records = data.records || [];
+    var columns = [
+      { label: 'الرقم', className: 'mono', value: function (row) { return row.id; } },
+      { label: 'الطالب', value: function (row) { return row.name; } },
+      { label: 'الصف', value: function (row) { return row.classroom; } },
+      { label: 'الحالة', value: function (row) { return ui.statusBadge(row.status); } },
+      { label: 'وقت الحضور', value: function (row) { return ui.timeOf(row.inAt); } },
+      { label: 'وقت الانصراف', value: function (row) { return ui.timeOf(row.outAt); } },
+      { label: 'طريقة الوصول', value: function (row) { return ui.methodLabel(row.inMethod); } },
+      { label: 'طريقة الانصراف', value: function (row) { return ui.methodLabel(row.outMethod); } }
+    ];
+    if (can('journeys.correct')) {
+      columns.push({
+        label: 'إجراء',
+        value: function (row) {
+          return h('button', { className: 'btn sm', type: 'button', text: 'تصحيح', onClick: function () { openCorrection(row); } });
+        }
+      });
+    }
+    return ui.card('سجل الطلاب', records.length + ' طالب • ' + ui.weekdayName(state.date), [], ui.dataTable(columns, records, {
+      emptyTitle: data.offDay ? 'لا يوجد سجل (يوم إجازة)' : 'لا توجد سجلات لهذا اليوم',
+      emptyHint: data.offDay ? 'اختر يومًا دراسيًا لعرض السجل.' : 'سيُنشأ السجل تلقائيًا عند أول عملية تسجيل أو عرض لليوم الحالي.'
+    }));
+  }
+
+  function drawHome() {
+    var data = state.day || { records: [], summary: {}, day: null, offDay: false };
+    var isToday = state.date === state.today;
+    var actions = [
+      h('input', {
+        type: 'date', value: state.date, max: state.today, 'aria-label': 'تاريخ السجل',
+        onChange: function (event) {
+          var value = event.target.value;
+          if (!value) return;
+          if (value > state.today) { toast('لا يمكن عرض تاريخ مستقبلي.', 'warn'); event.target.value = state.date; return; }
+          state.date = value;
+          state.lastScan = null;
+          renderHome();
+        }
+      }),
+      h('button', { className: 'btn', type: 'button', text: 'تحديث', onClick: renderHome })
+    ];
+    if (isToday && can('closeDay') && data.day && !data.day.closed) {
+      actions.push(h('button', { className: 'btn danger', type: 'button', text: 'إنهاء حضور اليوم', onClick: closeCurrentDay }));
+    }
+    var parts = [ui.pageHead('لوحة اليوم', ui.weekdayName(state.date) + ' • ' + state.date + (isToday ? ' • اليوم' : ''), actions)];
+    if (!isToday) parts.push(ui.alertBox('أنت تعرض سجلًا سابقًا. التسجيل متاح لليوم الحالي فقط.', 'info'));
+    if (data.offDay) parts.push(ui.alertBox('اليوم ليس من أيام الدراسة أو أنه عطلة. لا يوجد سجل حضور.', 'warn'));
+    if (data.day && data.day.closed) {
+      parts.push(ui.alertBox('تم إنهاء حضور هذا اليوم في ' + ui.timeOf(data.day.closedAt) + ' بواسطة ' + (data.day.operator || '—') + '.', 'info'));
+    }
+    if (!data.offDay && !data.day) {
+      parts.push(ui.alertBox('لا يوجد سجل لهذا اليوم. أضف طالبًا نشطًا ثم أعد فتح الصفحة.', 'warn'));
+    }
+    parts.push(summaryGrid(data.summary || {}));
+    if (can('scan') && isToday && !data.offDay && data.day && !data.day.closed) parts.push(scanCard());
+    parts.push(recordsCard(data));
+    mount(ui.$('main'), parts);
+    if (can('scan') && isToday) setTimeout(function () { var input = ui.$('scanInput'); if (input) { try { input.focus(); } catch (ignored) { /* تجاهل */ } } }, 70);
+  }
+
+  ui.renderHome = renderHome;
+})(window.SA);
+</script>

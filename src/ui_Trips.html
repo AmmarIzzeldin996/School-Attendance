@@ -1,0 +1,500 @@
+<script>
+/* السائقون والرحلات: فتح رحلة، مسح فردي، مراجعة، تأكيد داخل القفل، وإدارة السائقين. */
+(function (SA) {
+  'use strict';
+  var ui = SA.ui;
+  var state = ui.state;
+  var h = ui.h, api = ui.api, can = ui.can, mount = ui.mount, toast = ui.toast, showError = ui.showError;
+  var newView = ui.newView, stale = ui.stale, setBusy = ui.setBusy;
+
+  function tabs() {
+    var list = [{ id: 'trips', label: 'الرحلات' }];
+    if (can('drivers.manage')) list.push({ id: 'drivers', label: 'السائقون' });
+    return list;
+  }
+
+  function renderTrips() {
+    var token = newView();
+    var list = tabs();
+    if (!list.some(function (tab) { return tab.id === state.tripsTab; })) state.tripsTab = 'trips';
+    var active = state.tripsTab;
+    mount(ui.$('main'), [
+      ui.pageHead('السائقون والرحلات', 'رحلة مسودة تُمسح فرديًا ثم تُعتمد مرة واحدة'),
+      ui.subnav(list, active, function (id) { state.tripsTab = id; renderTrips(); }),
+      ui.loadingRow('جارٍ تحميل الرحلات…')
+    ]);
+    var jobs = { trips: api('getTrips', { date: state.tripsDate }) };
+    jobs.drivers = can('drivers.manage') ? api('getDriverAdminData') : Promise.resolve({ drivers: [], students: [] });
+    ui.loadJobs(jobs).then(function (data) {
+      if (stale(token)) return;
+      state.trips = data.trips || [];
+      state.driversData = data.drivers || state.driversData;
+      drawTrips(active);
+    }).catch(function (error) {
+      if (stale(token)) return;
+      showError(error);
+      mount(ui.$('main'), [
+        ui.pageHead('السائقون والرحلات', ''),
+        ui.subnav(list, active, function (id) { state.tripsTab = id; renderTrips(); }),
+        ui.alertBox(error.message, 'error'),
+        h('button', { className: 'btn', type: 'button', text: 'إعادة المحاولة', onClick: renderTrips })
+      ]);
+    });
+  }
+
+  function drawTrips(active) {
+    var content = active === 'drivers' ? driversCard() : tripsCard();
+    mount(ui.$('main'), [
+      ui.pageHead('السائقون والرحلات', 'رحلة مسودة تُمسح فرديًا ثم تُعتمد مرة واحدة'),
+      ui.subnav(tabs(), active, function (id) { state.tripsTab = id; renderTrips(); }),
+      content
+    ]);
+  }
+
+  /* ================= الرحلات ================= */
+
+  function tripsCard() {
+    var summary = state.trips.reduce(function (acc, trip) {
+      if (trip.status === 'DRAFT') acc.draft += 1;
+      else if (trip.status === 'CONFIRMED') acc.confirmed += 1;
+      else acc.cancelled += 1;
+      return acc;
+    }, { draft: 0, confirmed: 0, cancelled: 0 });
+    var actions = [
+      h('input', {
+        type: 'date', value: state.tripsDate, max: state.today, 'aria-label': 'تاريخ الرحلات',
+        onChange: function (event) {
+          if (!event.target.value) return;
+          state.tripsDate = event.target.value;
+          renderTrips();
+        }
+      }),
+      h('button', { className: 'btn', type: 'button', text: 'تحديث', onClick: renderTrips })
+    ];
+    if (can('journeys')) actions.push(h('button', { className: 'btn primary', type: 'button', text: 'فتح رحلة جديدة', onClick: openTripForm }));
+    var columns = [
+      { label: 'السائق', value: function (trip) { return trip.driverName + ' (' + trip.driverCode + ')'; } },
+      { label: 'المنطقة', value: function (trip) { return trip.area || '—'; } },
+      { label: 'النوع', value: function (trip) { return ui.badge(trip.mode === 'in' ? 'حضور' : 'انصراف', trip.mode === 'in' ? 'info' : 'draft'); } },
+      { label: 'الحالة', value: function (trip) { return ui.tripStatusBadge(trip.status); } },
+      { label: 'المسجّلون', align: 'center', value: function (trip) { return trip.counts.done + ' / ' + trip.counts.total; } },
+      { label: 'بواسطة', value: function (trip) { return trip.operator || '—'; } },
+      { label: 'الفتح', value: function (trip) { return ui.timeOf(trip.at); } },
+      {
+        label: 'إجراء',
+        value: function (trip) {
+          return h('div', { className: 'btn-row' }, [
+            h('button', { className: 'btn sm', type: 'button', text: 'مراجعة', onClick: function () { openTripDetail(trip.id); } }),
+            can('journeys') && trip.status === 'DRAFT' ? h('button', { className: 'btn sm primary', type: 'button', text: 'متابعة', onClick: function () { openTripDetail(trip.id); } }) : null
+          ]);
+        }
+      }
+    ];
+    return h('div', {}, [
+      h('div', { className: 'summary-grid' }, [
+        ui.stat('رحلات اليوم', state.trips.length, 'info'),
+        ui.stat('مسودات', summary.draft, 'warn'),
+        ui.stat('مؤكدة', summary.confirmed, 'ok'),
+        ui.stat('ملغاة', summary.cancelled, 'bad')
+      ]),
+      ui.card('رحلات ' + state.tripsDate, 'المسودة لا تؤثر على سجل الحضور حتى تُؤكد.', actions,
+        ui.dataTable(columns, state.trips, {
+          emptyTitle: 'لا توجد رحلات لهذا اليوم',
+          emptyHint: can('journeys') ? 'افتح رحلة جديدة بمسح بطاقة السائق أو اختياره.' : 'ستظهر الرحلات التي يفتحها المناوب.'
+        }))
+    ]);
+  }
+
+  function openTripForm() {
+    /* المشرف يرى قائمة السائقين؛ المناوب (gate) لا يملك drivers.manage فيدخل بالبطاقة أو الرقم. */
+    var drivers = (state.driversData.drivers || []).filter(function (driver) { return driver.active; });
+    var manage = can('drivers.manage');
+    var mode = 'in';
+    var modeHost = h('div');
+    var select = drivers.length ? ui.selectEl(drivers.map(function (driver) {
+      return { value: driver.code, label: driver.name + ' — ' + driver.area + ' (' + driver.code + ')' };
+    }), drivers[0].code, null) : null;
+    var driverInput = h('input', {
+      type: 'text', dir: 'ltr', autocomplete: 'off', maxlength: 300,
+      placeholder: drivers.length ? 'أو امسح بطاقة السائق أو أدخل رقمه' : 'امسح بطاقة السائق أو أدخل رقمه (9001)'
+    });
+    var open = h('button', { className: 'btn primary', type: 'button', text: 'فتح الرحلة' });
+    var modal;
+    function paintMode() {
+      ui.mount(modeHost, ui.segmented([
+        { value: 'in', label: 'رحلة حضور' },
+        { value: 'out', label: 'رحلة انصراف', activeClass: 'out' }
+      ], mode, function (value) { mode = value; paintMode(); }));
+    }
+    function submit() {
+      var typed = String(driverInput.value || '').trim();
+      var driver = typed || (select ? select.value : '');
+      if (!driver) { toast('امسح بطاقة السائق أو أدخل رقمه (4 أرقام تبدأ بـ 9).', 'warn'); return; }
+      setBusy(open, true);
+      api('openTrip', { driver: driver, mode: mode }).then(function (data) {
+        setBusy(open, false);
+        modal.close();
+        toast(data.resumed ? 'استُؤنفت المسودة المفتوحة لهذا السائق.' : 'تم فتح الرحلة.', data.resumed ? 'warn' : 'success');
+        openTripDetail(data.trip.id);
+      }).catch(function (error) {
+        setBusy(open, false);
+        showError(error);
+      });
+    }
+    open.addEventListener('click', submit);
+    driverInput.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') { event.preventDefault(); submit(); }
+    });
+    paintMode();
+
+    var fields = [
+      ui.alertBox('رحلة الحضور تُفتح قبل إنهاء اليوم. رحلة الانصراف تعرض الطلاب الحاضرين فقط.', 'info')
+    ];
+    if (manage && !drivers.length) {
+      fields.push(ui.alertBox('لا يوجد سائق نشط في القائمة. أضف سائقًا واربطه بالطلاب قبل فتح الرحلة.', 'warn'));
+    }
+    if (select) fields.push(ui.labeled('السائق', select));
+    fields.push(ui.labeled(select ? 'بطاقة السائق' : 'بطاقة السائق أو رقمه', h('div', { className: 'input-action' }, [
+      driverInput,
+      h('button', {
+        className: 'btn', type: 'button', text: 'الكاميرا',
+        onClick: function () {
+          ui.openCamera('مسح بطاقة السائق', function (text) {
+            driverInput.value = text;
+            submit();
+          });
+        }
+      })
+    ]), select ? 'المسح أو الرقم يتجاوز الاختيار اليدوي ويتحقق من نوع البطاقة وصلاحيتها.' : 'أدخل رقم السائق إن تعذر المسح.'));
+    fields.push(ui.labeled('نوع الرحلة', modeHost));
+
+    modal = ui.openModal('فتح رحلة جديدة', h('div', { className: 'stack' }, fields), [
+      h('button', { className: 'btn', type: 'button', text: 'إلغاء', onClick: function () { modal.close(); } }),
+      open
+    ], { narrow: true });
+  }
+
+  function openTripDetail(tripId) {
+    var host = h('div', {}, ui.loadingRow('جارٍ تحميل الرحلة…'));
+    var footer = h('div', { className: 'btn-row' });
+    var modal = ui.openModal('رحلة', host, [footer], { wide: true });
+    api('getTrip', { tripId: tripId }).then(function (data) {
+      paintTrip(data.trip);
+    }).catch(function (error) {
+      modal.close();
+      showError(error);
+    });
+
+    function paintTrip(trip) {
+      ui.clear(host);
+      ui.clear(footer);
+      var draft = trip.status === 'DRAFT';
+      var counts = trip.counts || { total: 0, done: 0, absent: 0, pending: 0 };
+
+      var meta = h('div', { className: 'card-sub' }, [
+        ui.tripStatusBadge(trip.status), ' ',
+        h('span', { text: trip.driverName + ' (' + trip.driverCode + ')' + (trip.area ? ' • ' + trip.area : '') + ' • ' + (trip.mode === 'in' ? 'حضور' : 'انصراف') })
+      ]);
+      host.appendChild(meta);
+
+      var stats = h('div', { className: 'summary-grid' }, [
+        ui.stat('إجمالي الرحلة', counts.total, 'info'),
+        ui.stat('مسجّل', counts.done, 'ok'),
+        ui.stat('بانتظار', counts.pending, 'warn'),
+        ui.stat('غائب', counts.absent, 'bad')
+      ]);
+      host.appendChild(stats);
+
+      if (trip.status === 'CONFIRMED') {
+        host.appendChild(ui.alertBox('تم تأكيد الرحلة في ' + ui.timeOf(trip.confirmedAt) + ' بواسطة ' + (trip.confirmedBy || '—') + '.', 'success'));
+      }
+      if (trip.status === 'CANCELLED') {
+        host.appendChild(ui.alertBox('الرحلة ملغاة؛ لم تُطبَّق أي تسجيلات منها.', 'warn'));
+      }
+      if (draft) host.appendChild(buildScanForm(trip));
+
+      var columns = [
+        { label: 'الرقم', className: 'mono', value: function (item) { return item.id; } },
+        { label: 'الطالب', value: function (item) { return item.name; } },
+        { label: 'الصف', value: function (item) { return item.classroom; } },
+        { label: 'الحالة', value: function (item) { return ui.tripStateBadge(item.state); } },
+        { label: 'الطريقة', value: function (item) { return item.method ? ui.methodLabel(item.method) : '—'; } },
+        { label: 'الوقت', value: function (item) { return item.at ? ui.timeOf(item.at) : '—'; } },
+        {
+          label: 'إجراء',
+          value: function (item) {
+            if (!draft || item.state === 'pending') return '—';
+            return h('button', {
+              className: 'btn sm danger-ghost', type: 'button', text: 'تراجع',
+              onClick: function () {
+                api('unscanTrip', { tripId: trip.id, studentId: item.id }).then(function (result) {
+                  paintTrip(result.trip);
+                  toast('تم التراجع عن ' + item.name + '.', 'success');
+                }).catch(showError);
+              }
+            });
+          }
+        }
+      ];
+      host.appendChild(ui.dataTable(columns, trip.items, { emptyTitle: 'لا يوجد طلاب في هذه الرحلة', emptyHint: 'راجع ربط الطلاب بالسائق.' }));
+
+      footer.appendChild(h('button', { className: 'btn', type: 'button', text: 'إغلاق', onClick: function () { modal.close(); } }));
+      footer.appendChild(h('span', { className: 'spacer' }));
+      if (draft && can('journeys')) {
+        footer.appendChild(h('button', { className: 'btn danger-ghost', type: 'button', text: 'إلغاء الرحلة', onClick: function () { cancelTrip(trip); } }));
+        footer.appendChild(h('button', { className: 'btn primary', type: 'button', text: 'تأكيد الرحلة', onClick: function () { confirmTrip(trip); } }));
+      }
+    }
+
+    function buildScanForm(trip) {
+      var input = h('input', { id: 'tripScanInput', type: 'text', dir: 'ltr', autocomplete: 'off', placeholder: 'امسح بطاقة الطالب أو أدخل رقمه' });
+      var reason = h('input', { type: 'text', maxlength: 200, placeholder: 'سبب الإدخال اليدوي (مطلوب عند إدخال الرقم)' });
+      var choice = 'scan';
+      var choiceHost = h('div');
+      var scanButton = h('button', { className: 'btn primary', type: 'button', text: 'تسجيل الطالب' });
+      function paintChoice() {
+        ui.mount(choiceHost, ui.segmented([
+          { value: 'scan', label: 'تسجيل عادي' },
+          { value: 'guardian', label: 'مع ولي الأمر', activeClass: 'out' }
+        ], choice, function (value) { choice = value; paintChoice(); }));
+      }
+      function submit() {
+        var value = String(input.value || '').trim();
+        if (!value) { toast('امسح البطاقة أو أدخل رقم الطالب.', 'warn'); return; }
+        setBusy(scanButton, true);
+        api('scanTrip', {
+          tripId: trip.id, input: value, choice: choice, reason: String(reason.value || '').trim()
+        }).then(function (data) {
+          setBusy(scanButton, false);
+          paintTrip(data.trip);
+          var fresh = host.querySelector('#tripScanInput');
+          if (fresh) { try { fresh.focus(); } catch (ignored) { /* تجاهل */ } }
+          toast(data.duplicate ? 'الطالب مسجّل مسبقًا في الرحلة.' : 'تم تسجيل الطالب.', data.duplicate ? 'warn' : 'success');
+        }).catch(function (error) {
+          setBusy(scanButton, false);
+          showError(error);
+          try { input.focus(); } catch (ignored) { /* تجاهل */ }
+        });
+      }
+      scanButton.addEventListener('click', submit);
+      input.addEventListener('keydown', function (event) { if (event.key === 'Enter') { event.preventDefault(); submit(); } });
+      paintChoice();
+      return h('form', {
+        className: 'scan-hero',
+        onSubmit: function (event) { event.preventDefault(); submit(); }
+      }, [
+        h('div', {}, [h('h3', { text: 'تسجيل الطلاب في الرحلة' }), h('div', { className: 'hint', text: 'يُسجَّل الطالب مرة واحدة؛ استخدم «تراجع» لتصحيح الخطأ قبل التأكيد.' })]),
+        h('div', { className: 'input-action' }, [
+          input,
+          h('button', {
+            className: 'btn', type: 'button', text: 'الكاميرا',
+            onClick: function () {
+              ui.openCamera('مسح بطاقة الطالب', function (text) {
+                input.value = text;
+                submit();
+              });
+            }
+          })
+        ]),
+        reason,
+        choiceHost,
+        h('div', { className: 'btn-row' }, [scanButton])
+      ]);
+    }
+
+    function confirmTrip(trip) {
+      ui.confirmAction('سيُطبَّق ' + trip.counts.done + ' طالبًا على سجل الحضور مرة واحدة، ولا يمكن تسجيلهم مرتين. هل تريد تأكيد الرحلة؟', 'تأكيد الرحلة', { danger: false }).then(function (ok) {
+        if (!ok) return;
+        api('confirmTrip', { tripId: trip.id }).then(function (data) {
+          if (data.alreadyConfirmed) toast('الرحلة مؤكدة مسبقًا.', 'warn');
+          else toast('تم تأكيد الرحلة. طُبّق ' + (data.applied || 0) + ' طالب.', 'success');
+          state.day = null;
+          modal.close();
+          renderTrips();
+        }).catch(showError);
+      });
+    }
+
+    function cancelTrip(trip) {
+      var reason = h('textarea', { maxlength: 200, placeholder: 'سبب الإلغاء (اختياري)' });
+      var save = h('button', { className: 'btn danger', type: 'button', text: 'تأكيد الإلغاء' });
+      var inner;
+      function submit() {
+        setBusy(save, true);
+        api('cancelTrip', { tripId: trip.id, reason: String(reason.value || '').trim() }).then(function () {
+          inner.close();
+          modal.close();
+          toast('تم إلغاء الرحلة.', 'success');
+          renderTrips();
+        }).catch(function (error) {
+          setBusy(save, false);
+          showError(error);
+        });
+      }
+      save.addEventListener('click', submit);
+      inner = ui.openModal('إلغاء رحلة', h('div', { className: 'stack' }, [
+        ui.alertBox('لن تُطبَّق أي تسجيلات من هذه الرحلة. لا يمكن التراجع عن الإلغاء.', 'warn'),
+        ui.labeled('سبب الإلغاء', reason)
+      ]), [
+        h('button', { className: 'btn', type: 'button', text: 'رجوع', onClick: function () { inner.close(); } }),
+        save
+      ], { narrow: true });
+    }
+  }
+
+  /* ================= السائقون ================= */
+
+  function driversCard() {
+    var columns = [
+      { label: 'الرقم', className: 'mono', value: function (row) { return row.code; } },
+      { label: 'السائق', value: function (row) { return row.name; } },
+      { label: 'المنطقة', value: function (row) { return row.area; } },
+      { label: 'الجوال', className: 'mono', value: function (row) { return row.phone; } },
+      { label: 'الهوية', className: 'mono', value: function (row) { return row.identity; } },
+      { label: 'الطلاب', align: 'center', value: function (row) { return (row.students || []).length; } },
+      { label: 'الحالة', value: function (row) { return ui.badge(row.active ? 'نشط' : 'موقوف', row.active ? 'active' : 'inactive'); } },
+      {
+        label: 'إجراءات',
+        value: function (row) {
+          return h('div', { className: 'btn-row' }, [
+            h('button', { className: 'btn sm', type: 'button', text: 'تعديل', onClick: function () { openDriverForm(row); } }),
+            h('button', {
+              className: 'btn sm ghost', type: 'button', text: 'بطاقة',
+              onClick: function () { ui.issueCardFor('DRIVER', row.code).catch(showError); }
+            }),
+            h('button', { className: 'btn sm danger-ghost', type: 'button', text: 'حذف', onClick: function () { deleteDriver(row); } })
+          ]);
+        }
+      }
+    ];
+    var drivers = state.driversData.drivers || [];
+    return ui.card('السائقون', 'كل طالب مرتبط بسائق نشط واحد فقط. بطاقة السائق إلزامية للتحقق في الرحلات.', [
+      h('button', { className: 'btn primary', type: 'button', text: 'إضافة سائق', onClick: function () { openDriverForm(null); } }),
+      h('button', { className: 'btn', type: 'button', text: 'تحديث', onClick: renderTrips })
+    ], ui.dataTable(columns, drivers, {
+      emptyTitle: 'لا يوجد سائقون',
+      emptyHint: 'أضف سائقًا واربطه بطلابه قبل فتح الرحلات.'
+    }));
+  }
+
+  function openDriverForm(driver) {
+    var editing = !!driver;
+    var codeInput = h('input', { type: 'text', dir: 'ltr', maxlength: 4, value: editing ? driver.code : '', placeholder: '9001', disabled: editing });
+    var nameInput = h('input', { type: 'text', maxlength: 120, value: editing ? driver.name : '' });
+    var areaInput = h('input', { type: 'text', maxlength: 100, value: editing ? driver.area : '' });
+    var phoneInput = h('input', { type: 'text', dir: 'ltr', maxlength: 30, value: editing ? driver.phone : '', placeholder: '05xxxxxxxx' });
+    var identityInput = h('input', { type: 'text', dir: 'ltr', maxlength: 30, value: editing ? driver.identity : '' });
+    var activeInput = h('input', { type: 'checkbox', checked: editing ? !!driver.active : true });
+    var search = h('input', { type: 'search', placeholder: 'بحث في الطلاب' });
+    var listHost = h('div', { className: 'list-check' });
+    var boxes = [];
+    var selected = {};
+    (editing ? driver.students : []).forEach(function (id) { selected[String(id)] = true; });
+    function paintStudents() {
+      var query = String(search.value || '').trim().toLowerCase();
+      ui.clear(listHost);
+      boxes = [];
+      (state.driversData.students || []).filter(function (student) {
+        if (!query) return true;
+        return String(student.name).toLowerCase().indexOf(query) >= 0 ||
+          String(student.id).indexOf(query) >= 0 ||
+          String(student.classroom).toLowerCase().indexOf(query) >= 0;
+      }).forEach(function (student) {
+        var box = h('input', { type: 'checkbox', checked: !!selected[String(student.id)] });
+        box.addEventListener('change', function () {
+          if (box.checked) selected[String(student.id)] = true;
+          else delete selected[String(student.id)];
+        });
+        boxes.push({ id: student.id, box: box });
+        listHost.appendChild(h('label', { className: 'check' }, [
+          box,
+          h('span', { text: student.name + ' — ' + student.classroom + ' (' + student.id + ')' })
+        ]));
+      });
+      if (!listHost.firstChild) listHost.appendChild(h('div', { className: 'empty', text: 'لا يوجد طلاب مطابقون.' }));
+    }
+    search.addEventListener('input', paintStudents);
+    var save = h('button', { className: 'btn primary', type: 'button', text: editing ? 'حفظ التعديل' : 'إضافة السائق' });
+    var modal;
+    function submit() {
+      var students = boxes.filter(function (entry) { return entry.box.checked; }).map(function (entry) { return entry.id; });
+      var payload = {
+        code: String(codeInput.value || '').trim(),
+        name: String(nameInput.value || '').trim(),
+        area: String(areaInput.value || '').trim(),
+        phone: String(phoneInput.value || '').trim(),
+        identity: String(identityInput.value || '').trim(),
+        active: activeInput.checked,
+        students: students
+      };
+      if (editing) payload.originalCode = driver.code;
+      if (!/^9\d{3}$/.test(payload.code) && !editing) { toast('رقم السائق 4 أرقام يبدأ بالرقم 9.', 'error'); return; }
+      if (!payload.name || !payload.area || !payload.phone || !payload.identity) {
+        toast('الاسم والمنطقة والجوال والهوية مطلوبة.', 'error'); return;
+      }
+      if (!students.length && payload.active) { toast('اربط طالبًا واحدًا على الأقل بالسائق النشط.', 'error'); return; }
+      setBusy(save, true);
+      api('saveDriver', payload).then(function (data) {
+        setBusy(save, false);
+        state.driversData = data.data;
+        modal.close();
+        toast(editing ? 'تم حفظ بيانات السائق.' : 'تمت إضافة السائق.', 'success');
+        renderTrips();
+      }).catch(function (error) {
+        setBusy(save, false);
+        showError(error);
+      });
+    }
+    save.addEventListener('click', submit);
+    paintStudents();
+    modal = ui.openModal(editing ? 'تعديل سائق' : 'إضافة سائق', h('div', { className: 'stack' }, [
+      ui.alertBox('لا يمكن ربط الطالب بأكثر من سائق نشط. الطلاب المربوطون بسائق نشط آخر سيُرفضون.', 'info'),
+      h('div', { className: 'grid cols-2' }, [
+        ui.labeled('رقم السائق', codeInput, '4 أرقام تبدأ بـ 9، مثال 9001.'),
+        ui.labeled('المنطقة', areaInput)
+      ]),
+      ui.labeled('اسم السائق', nameInput),
+      h('div', { className: 'grid cols-2' }, [
+        ui.labeled('الجوال', phoneInput),
+        ui.labeled('الهوية / الإقامة', identityInput)
+      ]),
+      h('label', { className: 'check' }, [activeInput, h('span', { text: 'السائق نشط' })]),
+      ui.labeled('طلاب السائق', h('div', { className: 'stack' }, [search, listHost]), 'حدد الطلاب المسؤول عنهم.'),
+    ]), [
+      h('button', { className: 'btn', type: 'button', text: 'إلغاء', onClick: function () { modal.close(); } }),
+      save
+    ], { wide: true });
+  }
+
+  function deleteDriver(driver) {
+    var reason = h('textarea', { maxlength: 300, placeholder: 'سبب الحذف (5 أحرف على الأقل)' });
+    var save = h('button', { className: 'btn danger', type: 'button', text: 'تأكيد الحذف' });
+    var modal;
+    function submit() {
+      if (String(reason.value || '').trim().length < 5) { toast('سبب الحذف مطلوب (5 أحرف على الأقل).', 'error'); return; }
+      setBusy(save, true);
+      api('deleteDriver', { code: driver.code, reason: String(reason.value || '').trim() }).then(function (data) {
+        setBusy(save, false);
+        state.driversData = data.data;
+        modal.close();
+        toast('تم حذف السائق وإلغاء بطاقاته.', 'success');
+        renderTrips();
+      }).catch(function (error) {
+        setBusy(save, false);
+        showError(error);
+      });
+    }
+    save.addEventListener('click', submit);
+    modal = ui.openModal('حذف سائق', h('div', { className: 'stack' }, [
+      ui.alertBox('الحذف يُلغي بطاقة السائق ويمنع فتح رحلات جديدة له. سجل الرحلات السابق يبقى محفوظًا.', 'warn'),
+      ui.labeled('السائق', h('input', { type: 'text', readOnly: true, value: driver.name + ' (' + driver.code + ')' })),
+      ui.labeled('سبب الحذف', reason)
+    ]), [
+      h('button', { className: 'btn', type: 'button', text: 'رجوع', onClick: function () { modal.close(); } }),
+      save
+    ], { narrow: true });
+  }
+
+  ui.renderTrips = renderTrips;
+})(window.SA);
+</script>

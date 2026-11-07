@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>نظام الحضور والانصراف</title>
+  <?!= include('ui_Styles') ?>
+</head>
+<body>
+
+  <div id="bootScreen" class="boot-screen">
+    <div class="boot-card">
+      <div class="brand-mark" aria-hidden="true">ح</div>
+      <p>جارٍ تحميل النظام…</p>
+    </div>
+  </div>
+
+  <!-- شاشة الدخول -->
+  <section id="loginScreen" class="login-screen hidden" aria-labelledby="loginSystemName">
+    <div class="login-panel">
+      <div class="login-brand">
+        <div class="brand-mark" aria-hidden="true">ح</div>
+        <h1 id="loginSystemName">نظام الحضور والانصراف</h1>
+        <p id="loginSchoolName" class="muted"></p>
+      </div>
+
+      <div id="loginAlert" class="alert hidden" role="alert"></div>
+
+      <form id="loginPasswordForm" class="stack" autocomplete="on" novalidate>
+        <div class="field">
+          <label for="loginUsername">اسم المستخدم</label>
+          <input id="loginUsername" name="username" dir="ltr" autocomplete="username"
+                 maxlength="40" required placeholder="admin">
+        </div>
+        <div class="field">
+          <label for="loginPassword">كلمة المرور</label>
+          <div class="input-action">
+            <input id="loginPassword" name="password" type="password" dir="ltr"
+                   autocomplete="current-password" maxlength="128" required placeholder="••••••••">
+            <button id="toggleLoginPassword" class="btn ghost sm" type="button" aria-label="إظهار كلمة المرور">إظهار</button>
+          </div>
+        </div>
+        <button id="loginSubmit" class="btn primary block" type="submit">تسجيل الدخول</button>
+      </form>
+
+      <div class="divider"><span>أو الدخول بالبطاقة</span></div>
+
+      <form id="loginCardForm" class="stack" novalidate>
+        <div class="field">
+          <label for="loginCardToken">بطاقة الدخول (QR)</label>
+          <div class="input-action">
+            <input id="loginCardToken" dir="ltr" autocomplete="off" maxlength="200"
+                   placeholder="امسح بطاقة المستخدم أو الصق رمزها">
+            <button id="loginCardCamera" class="btn ghost sm" type="button">الكاميرا</button>
+          </div>
+        </div>
+        <button id="loginCardSubmit" class="btn block" type="submit">دخول بالبطاقة</button>
+      </form>
+
+      <button id="loginGoogle" class="btn google block hidden" type="button">الدخول بحساب Google</button>
+
+      <p class="login-note">
+        الدخول محمي، وتُسجَّل كل العمليات في سجل التدقيق. عند نسيان كلمة المرور تواصل مع مدير النظام.
+      </p>
+      <p id="loginVersion" class="login-version"></p>
+    </div>
+  </section>
+
+  <!-- التطبيق -->
+  <div id="appShell" class="app-shell hidden">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="brand-mark sm" aria-hidden="true">ح</div>
+        <div class="topbar-titles">
+          <strong id="appSystemName">نظام الحضور والانصراف</strong>
+          <span id="appSchoolName" class="muted"></span>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <span id="connectionBadge" class="conn is-idle" title="حالة الاتصال بالخادم">
+          <span class="conn-dot" aria-hidden="true"></span>
+          <span class="conn-label">جاري الاتصال</span>
+        </span>
+        <span id="userChip" class="user-chip"></span>
+      </div>
+    </header>
+
+    <nav id="mainNav" class="main-nav" aria-label="التنقل الرئيسي"></nav>
+
+    <main id="main" class="main" tabindex="-1">
+      <div class="loading-row"><span class="spinner" aria-hidden="true"></span> جارٍ التحميل…</div>
+    </main>
+  </div>
+
+  <div id="modalRoot"></div>
+  <div id="toasts" class="toasts" aria-live="polite" aria-atomic="false"></div>
+
+  <script>window.APP_CONFIG = <?!= configJson ?>;</script>
+  <?!= include('ui_Vendor') ?>
+  <?!= include('ui_App') ?>
+  <?!= include('ui_Home') ?>
+  <?!= include('ui_Students') ?>
+  <?!= include('ui_Trips') ?>
+  <?!= include('ui_Reports') ?>
+  <?!= include('ui_Settings') ?>
+  <script>SA.boot();</script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+{
+  "scriptId": "REPLACE_WITH_SCRIPT_ID",
+  "rootDir": "src",
+  "filePushOrder": [
+    "00_PasswordCrypto.gs",
+    "01_Config.gs",
+    "02_Core.gs",
+    "03_Repo.gs",
+    "04_Audit.gs",
+    "05_Auth.gs",
+    "06_Cards.gs",
+    "07_Attendance.gs",
+    "08_People.gs",
+    "09_Trips.gs",
+    "10_Reports.gs",
+    "11_Backup.gs",
+    "12_Entry.gs",
+    "Index.html",
+    "ui_Styles.html",
+    "ui_Vendor.html",
+    "ui_App.html",
+    "ui_Home.html",
+    "ui_Students.html",
+    "ui_Trips.html",
+    "ui_Reports.html",
+    "ui_Settings.html"
+  ]
+}
