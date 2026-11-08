@@ -1,5 +1,5 @@
-import { BrowserQRCodeReader } from '@zxing/browser';
+import jsQR from 'jsqr';
 import qrcode from 'qrcode-generator';
 
-window.ZXingBrowser = { BrowserQRCodeReader };
+window.SAQR = jsQR;
 window.qrcode = qrcode;

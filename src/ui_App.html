@@ -544,7 +544,7 @@ window.SA = window.SA || {};
     }
   }
 
-  /* ---------- البطاقات والكاميرا ---------- */
+  /* ---------- البطاقات وقارئ QR ---------- */
   function issueCardFor(type, ownerId, note) {
     return api('issueCard', { type: type, ownerId: ownerId, note: note || '' }).then(function (result) {
       showCardToken(result);
@@ -577,42 +577,115 @@ window.SA = window.SA || {};
       result.revoked ? h('div', { className: 'alert warn', text: 'تم إلغاء ' + result.revoked + ' بطاقة نشطة سابقة لهذا الصاحب.' }) : null
     ]), [copy, print, close], { narrow: true });
   }
+  function decodeImage(image, onResult) {
+    try {
+      var scale = Math.min(1, 1600 / Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height));
+      var canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round((image.naturalWidth || image.width) * scale));
+      canvas.height = Math.max(1, Math.round((image.naturalHeight || image.height) * scale));
+      var context = canvas.getContext('2d', { willReadFrequently: true });
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      var frame = context.getImageData(0, 0, canvas.width, canvas.height);
+      var found = window.SAQR ? window.SAQR(frame.data, frame.width, frame.height, { inversionAttempts: 'attemptBoth' }) : null;
+      if (found && found.data) { onResult(found.data); return true; }
+      return false;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function pickImage(title, onResult) {
+    var input = h('input', { type: 'file', accept: 'image/*', className: 'hidden' });
+    function cleanup() { if (input.parentNode) input.parentNode.removeChild(input); }
+    input.addEventListener('change', function () {
+      var file = input.files && input.files[0];
+      cleanup();
+      if (!file) return;
+      var url = URL.createObjectURL(file);
+      var image = new Image();
+      image.onload = function () {
+        var ok = decodeImage(image, onResult);
+        URL.revokeObjectURL(url);
+        if (!ok) toast('لم يُعثر على رمز QR واضح في الصورة. جرّب صورة أقرب أو استخدم قارئ الباركود.', 'error');
+      };
+      image.onerror = function () {
+        URL.revokeObjectURL(url);
+        toast('تعذر فتح الصورة المختارة.', 'error');
+      };
+      image.src = url;
+    });
+    input.addEventListener('cancel', cleanup);
+    document.body.appendChild(input);
+    input.click();
+  }
+
   function openCamera(title, onResult) {
-    if (!window.ZXingBrowser || !window.ZXingBrowser.BrowserQRCodeReader) {
-      toast('قارئ الكاميرا غير متاح في هذا المتصفح. استخدم قارئ الباركود أو الإدخال اليدوي.', 'warn');
+    if (!window.SAQR) {
+      toast('قارئ QR غير متاح. استخدم اختيار صورة أو قارئ الباركود.', 'warn');
+      pickImage(title, onResult);
       return;
     }
-    var video = h('video', { playsInline: true, muted: true });
+    var video = h('video', { playsInline: true, muted: true, autoplay: true });
     var hint = h('div', { className: 'camera-hint', text: 'وجّه الكاميرا نحو رمز QR…' });
-    var controls = null;
-    var stopped = false;
+    var canvas = document.createElement('canvas');
+    var context = canvas.getContext('2d', { willReadFrequently: true });
+    var stream = null, frame = 0, stopped = false, modal = null;
     function stop() {
       if (stopped) return;
       stopped = true;
-      if (controls && controls.stop) { try { controls.stop(); } catch (ignored) { /* توقف مسبق */ } }
+      if (frame) { cancelAnimationFrame(frame); frame = 0; }
+      if (stream) {
+        stream.getTracks().forEach(function (track) { try { track.stop(); } catch (ignored) { /* توقف مسبق */ } });
+        stream = null;
+      }
+      video.srcObject = null;
     }
-    var modal = openModal(title, [
-      h('div', { className: 'camera-stage' }, [video, hint]),
-      h('p', { className: 'hint', text: 'إن لم تعمل الكاميرا فاستخدم قارئ الباركود أو أدخل الرمز يدويًا.' })
-    ], [h('button', { className: 'btn', type: 'button', text: 'إغلاق', onClick: function () { modal.close(); } })], { wide: true, onClose: stop });
-    try {
-      var reader = new window.ZXingBrowser.BrowserQRCodeReader();
-      reader.decodeFromVideoDevice(undefined, video, function (result, error, ctrl) {
-        if (ctrl) controls = ctrl;
-        if (result && !stopped) {
-          var text = result.getText();
-          stop();
-          modal.close();
-          if (onResult) onResult(text);
+    function tick() {
+      if (stopped) return;
+      try {
+        if (video.readyState >= 2 && video.videoWidth) {
+          // تصغير الإطار إلى 800 بكسل كحد أقصى: أسرع بكثير على الجوال مع بقاء QR مقروءًا.
+          var scale = Math.min(1, 800 / Math.max(video.videoWidth, video.videoHeight));
+          var width = Math.max(1, Math.round(video.videoWidth * scale));
+          var height = Math.max(1, Math.round(video.videoHeight * scale));
+          if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
+          context.drawImage(video, 0, 0, width, height);
+          var pixels = context.getImageData(0, 0, width, height);
+          var found = window.SAQR(pixels.data, pixels.width, pixels.height, { inversionAttempts: 'dontInvert' });
+          if (found && found.data) {
+            stop();
+            modal.close();
+            if (onResult) onResult(found.data);
+            return;
+          }
         }
-      }).then(function (ctrl) { controls = ctrl; }).catch(function () {
-        hint.textContent = 'تعذر تشغيل الكاميرا. تحقق من الصلاحيات أو استخدم الإدخال اليدوي.';
-        toast('تعذر تشغيل الكاميرا.', 'error');
-      });
-    } catch (error) {
-      hint.textContent = 'تعذر تشغيل الكاميرا.';
-      toast('تعذر تشغيل الكاميرا.', 'error');
+      } catch (ignored) { /* إطار غير مكتمل */ }
+      frame = requestAnimationFrame(tick);
     }
+    function chooseImage() { modal.close(); pickImage(title, onResult); }
+    modal = openModal(title, [
+      h('div', { className: 'camera-stage' }, [video, hint]),
+      h('p', { className: 'hint', text: 'إن لم تعمل الكاميرا فاختر صورة QR من جهازك، أو استخدم قارئ الباركود أو الإدخال اليدوي.' })
+    ], [
+      h('button', { className: 'btn', type: 'button', text: 'اختيار صورة', onClick: chooseImage }),
+      h('button', { className: 'btn', type: 'button', text: 'إغلاق', onClick: function () { modal.close(); } })
+    ], { wide: true, onClose: stop });
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      hint.textContent = 'المتصفح لا يدعم الكاميرا. اختر صورة أو استخدم قارئ الباركود.';
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
+      .then(function (media) {
+        if (stopped) { media.getTracks().forEach(function (track) { track.stop(); }); return; }
+        stream = media;
+        video.srcObject = media;
+        var playing = video.play();
+        if (playing && playing.catch) playing.catch(function () { /* التشغيل تلقائي */ });
+        tick();
+      })
+      .catch(function () {
+        hint.textContent = 'تعذر تشغيل الكاميرا. اختر صورة أو استخدم قارئ الباركود.';
+      });
   }
 
   /* ---------- الإقلاع ---------- */
@@ -647,6 +720,9 @@ window.SA = window.SA || {};
     if ($('loginCardCamera')) $('loginCardCamera').addEventListener('click', function () {
       openCamera('مسح بطاقة الدخول', function (text) { $('loginCardToken').value = text; submitCardLogin(); });
     });
+    if ($('loginCardImage')) $('loginCardImage').addEventListener('click', function () {
+      pickImage('اختيار صورة بطاقة الدخول', function (text) { $('loginCardToken').value = text; submitCardLogin(); });
+    });
     if ($('toggleLoginPassword')) $('toggleLoginPassword').addEventListener('click', function () {
       var input = $('loginPassword');
       var showing = input.type === 'text';
@@ -669,7 +745,7 @@ window.SA = window.SA || {};
   ui.toast = toast; ui.openModal = openModal; ui.closeAllModals = closeAllModals; ui.confirmAction = confirmAction;
   ui.api = api; ui.showError = showError; ui.can = can; ui.setConnection = setConnection;
   ui.saveToken = saveToken; ui.clearToken = clearToken; ui.issueCardFor = issueCardFor; ui.showCardToken = showCardToken;
-  ui.openCamera = openCamera; ui.openPasswordDialog = openPasswordDialog; ui.refreshBootstrap = refreshBootstrap;
+  ui.openCamera = openCamera; ui.pickImage = pickImage; ui.openPasswordDialog = openPasswordDialog; ui.refreshBootstrap = refreshBootstrap;
   ui.showLogin = showLogin; ui.logout = logout; ui.applyBranding = applyBranding; ui.renderView = renderView;
   SA.boot = boot;
 })(window.SA);

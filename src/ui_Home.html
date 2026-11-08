@@ -57,14 +57,17 @@
     });
     var submit = h('button', { className: 'btn primary', type: 'submit', text: 'تسجيل' });
     var result = h('div', { id: 'scanResult', className: 'scan-result' + (state.lastScan ? (state.lastScan.ok ? ' ok' : ' bad') : '') }, scanResultContent());
+    function scanned(text) {
+      input.value = text;
+      performScan(text, reason.value, submit);
+    }
     var camera = h('button', {
-      className: 'btn', type: 'button', text: 'الكاميرا',
-      onClick: function () {
-        ui.openCamera('مسح بطاقة الطالب', function (text) {
-          input.value = text;
-          performScan(text, reason.value, submit);
-        });
-      }
+      className: 'btn', type: 'button', text: 'الكاميرا', title: 'مسح QR بكاميرا الجهاز',
+      onClick: function () { ui.openCamera('مسح بطاقة الطالب', scanned); }
+    });
+    var image = h('button', {
+      className: 'btn', type: 'button', text: 'صورة', title: 'اختيار صورة QR من الجهاز',
+      onClick: function () { ui.pickImage('اختيار صورة بطاقة الطالب', scanned); }
     });
     var form = h('form', {
       className: 'scan-hero',
@@ -75,7 +78,7 @@
         { value: 'in', label: 'حضور' },
         { value: 'out', label: 'انصراف', activeClass: 'out' }
       ], state.scanMode, function (value) { state.scanMode = value; drawHome(); }),
-      h('div', { className: 'input-action' }, [input, camera]),
+      h('div', { className: 'input-action' }, [input, camera, image]),
       reason,
       h('div', { className: 'btn-row' }, [submit]),
       result

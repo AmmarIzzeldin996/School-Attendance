@@ -7,8 +7,11 @@ function validateStudent_(input, others, legacy) {
     phone: cleanText_(input && input.phone, 30),
     active: !input || input.active !== false
   };
-  if (!(legacy ? /^[0-9A-Za-z_-]+$/ : /^[0-9]{4}$/).test(student.id)) {
-    fail_('VALIDATION', 'رقم الطالب يجب أن يتكون من 4 أرقام فقط.');
+  var validId = /^[0-9]{4}$/.test(student.id) ||
+    /^STU[-_]?[0-9]{3,}$/.test(student.id) ||
+    (legacy && /^[0-9A-Za-z_-]+$/.test(student.id));
+  if (!validId) {
+    fail_('VALIDATION', 'رقم الطالب يجب أن يكون 4 أرقام (مثال 1001) أو رمز بطاقة 3.5 (مثال STU-1001).');
   }
   if (!normalizeName_(student.name) || !student.classroom) {
     fail_('VALIDATION', 'اسم الطالب والصف مطلوبان.');

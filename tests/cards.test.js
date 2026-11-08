@@ -126,6 +126,24 @@ describe('cards', () => {
     expect(fail(app, 'scanStudent', { mode: 'in', input: 'A'.repeat(45) }).code).toBe('INVALID_QR');
   });
 
+  it('accepts printed 3.5 student codes (STU-…) and Code128 delimiters without a manual reason', () => {
+    const app = setup({
+      students: [
+        { id: 'STU-2001', name: 'طالب قديم', classroom: 'الثالث', active: true },
+        { id: '2002', name: 'طالب جديد', classroom: 'الثالث', active: true }
+      ]
+    });
+    const legacy = ok(app, 'scanStudent', { mode: 'in', input: 'STU-2001' }, 'req-legacy-0001');
+    expect(legacy.method).toBe('qr');
+    expect(legacy.student.id).toBe('STU-2001');
+
+    const mapped = ok(app, 'scanStudent', { mode: 'in', input: '*STU-2002*' }, 'req-legacy-0002');
+    expect(mapped.method).toBe('qr');
+    expect(mapped.student.id).toBe('2002');
+
+    expect(fail(app, 'scanStudent', { mode: 'in', input: 'STU-9999' }).code).toBe('STUDENT_NOT_FOUND');
+  });
+
   it('limits driver cards to driver managers and user cards to the primary admin', () => {
     const app = base();
     const registrar = createUser(app, { username: 'reg_cards', role: 'registrar' });

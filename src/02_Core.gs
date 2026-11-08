@@ -41,6 +41,7 @@ function normalizeId_(value) {
 function normalizeBarcode_(value) {
   return String(value == null ? '' : value).normalize('NFKC')
     .replace(/[\u0000-\u0020\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '')
+    .replace(/^\*+|\*+$/g, '')
     .trim();
 }
 

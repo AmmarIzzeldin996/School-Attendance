@@ -44,7 +44,12 @@ function findDriverByCode_(drivers, code) {
   return drivers.filter(function (driver) { return normalizeId_(driver.code) === target; })[0] || null;
 }
 
-// الإدخال: رمز بطاقة غامض، أو رقم طالب يدوي (يتطلب سببًا وسجل تدقيق).
+// رمز الطالب المطبوع في 3.5: STU-1001 أو STU1001 (QR/باركود البطاقة القديمة).
+function isPrintedStudentCode_(value) {
+  return /^STU[-_]?\d{3,}$/.test(normalizeId_(value));
+}
+
+// الإدخال: رمز بطاقة غامض، أو بطاقة 3.5 المطبوعة، أو رقم طالب يدوي (يتطلب سببًا وسجل تدقيق).
 function resolveStudentInput_(rawInput) {
   var raw = normalizeBarcode_(rawInput);
   if (!raw) fail_('VALIDATION', 'أدخل رقم الطالب أو امسح بطاقة QR.');
@@ -59,13 +64,19 @@ function resolveStudentInput_(rawInput) {
   }
   var manualId = normalizeId_(raw);
   if (!/^[0-9A-Za-z_-]{1,30}$/.test(manualId)) fail_('INVALID_QR', ERROR_MESSAGES_.INVALID_QR);
-  var manualStudent = findStudentById_(readTable_('Students'), manualId);
+  var roster = readTable_('Students');
+  var printed = isPrintedStudentCode_(raw);
+  var manualStudent = findStudentById_(roster, manualId);
+  // جسر بين رقم 3.5 (STU-1001) ورقم 3.6 (1001) لنفس البطاقة المطبوعة.
+  if (!manualStudent && printed) {
+    manualStudent = findStudentById_(roster, normalizeId_(raw).replace(/^STU[-_]?/, ''));
+  }
   if (!manualStudent) {
     if (isCardToken_(raw)) fail_('INVALID_QR', ERROR_MESSAGES_.INVALID_QR);
     fail_('STUDENT_NOT_FOUND', ERROR_MESSAGES_.STUDENT_NOT_FOUND);
   }
   if (!manualStudent.active) fail_('OWNER_INACTIVE', ERROR_MESSAGES_.OWNER_INACTIVE);
-  return { student: manualStudent, method: 'manual', card: null };
+  return { student: manualStudent, method: printed ? 'qr' : 'manual', card: null };
 }
 
 function resolveDriverInput_(rawInput) {

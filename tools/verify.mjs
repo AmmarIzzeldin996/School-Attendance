@@ -59,8 +59,8 @@ for (const action of Object.keys(policy)) {
 }
 
 const vendor = read('ui_Vendor.html');
-if (vendor.length < 100000) problems.push('vendor bundle looks truncated: ' + vendor.length);
-for (const global of ['ZXingBrowser', 'qrcode']) {
+if (vendor.length < 80000) problems.push('vendor bundle looks truncated: ' + vendor.length);
+for (const global of ['SAQR', 'qrcode']) {
   if (!vendor.includes(global)) problems.push('vendor bundle missing global: ' + global);
 }
 

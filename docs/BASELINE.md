@@ -20,8 +20,8 @@
 | وقت التشغيل المستهدف | Google Apps Script V8 |
 | قاعدة البيانات | Google Sheets |
 
-حزم التطوير مثبّتة بإصدارات دقيقة في `package.json`: `esbuild 0.28.2`، `@zxing/browser 0.2.1`،
-`@zxing/library 0.23.0`، `qrcode-generator 2.0.4`، `vitest 5.1.0`.
+حزم التطوير مثبّتة بإصدارات دقيقة في `package.json`: `esbuild 0.28.2`، `jsqr 1.4.0`،
+`qrcode-generator 2.0.4`، `vitest 5.1.0`.
 
 ## 3) إعادة إنتاج التحقق
 
@@ -29,7 +29,7 @@
 npm.cmd install
 npm.cmd run vendor   # يعيد بناء src/ui_Vendor.html من node_modules
 npm.cmd run verify   # فحص ساكن: صياغة، include، عقد API/UI، غياب placeholders
-npm.cmd test         # 72 اختبارًا في 9 ملفات
+npm.cmd test         # 73 اختبارًا في 9 ملفات
 ```
 
 النتيجة المسجلة لهذا الأساس:
@@ -37,7 +37,7 @@ npm.cmd test         # 72 اختبارًا في 9 ملفات
 ```
 verify: OK — 13 server files, 7 UI files, 40 actions
 Test Files  9 passed (9)
-Tests       72 passed (72)
+Tests       73 passed (73)
 ```
 
 ## 4) ما تم التحقق منه آليًا
@@ -69,7 +69,7 @@ Tests       72 passed (72)
 - `bcryptjs` يعمل داخل V8 بتكلفة 12؛ كل اختبار مصادقة يستهلك ثواني. هذا مقصود لأمان كلمات المرور.
 - لا تُستخدم `CacheService` كمرجع نهائي لأي قرار أمني؛ الجلسات والبطاقات تُقرأ من Script Properties/Sheets.
 - الواجهة لا تستخدم `innerHTML` ولا `eval`؛ كل النصوص عبر `textContent` أو إنشاء DOM.
-- `src/ui_Vendor.html` ملف مولّد (حوالي 507 ك.ب) ويُعاد بناؤه بـ `npm run vendor` عند تغيير الحزم.
+- `src/ui_Vendor.html` ملف مولّد (حوالي 149 ك.ب: jsQR + qrcode) ويُعاد بناؤه بـ `npm run vendor` عند تغيير الحزم.
 - لا تُحذف سجلات الحضور التاريخية تلقائيًا، وفق سياسة `docs/RETENTION.md`.
 
 ## 7) خط الأساس في Git

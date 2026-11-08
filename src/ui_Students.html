@@ -130,7 +130,7 @@
 
   function openStudentForm(student) {
     var editing = !!student;
-    var idInput = h('input', { type: 'text', dir: 'ltr', maxlength: 30, value: editing ? student.id : '', disabled: editing, placeholder: '4 أرقام' });
+    var idInput = h('input', { type: 'text', dir: 'ltr', maxlength: 30, value: editing ? student.id : '', disabled: editing, placeholder: '1001 أو STU-1001' });
     var nameInput = h('input', { type: 'text', maxlength: 120, value: editing ? student.name : '' });
     var classroomInput = h('input', { type: 'text', list: 'classroomOptions', maxlength: 80, value: editing ? student.classroom : '' });
     var phoneInput = h('input', { type: 'text', dir: 'ltr', maxlength: 30, value: editing ? (student.phone || '') : '', placeholder: '05xxxxxxxx' });
@@ -148,7 +148,10 @@
         phone: phoneInput.value.trim(),
         active: activeInput.checked
       };
-      if (!/^\d{4}$/.test(payload.id) && !editing) { toast('رقم الطالب يجب أن يكون 4 أرقام.', 'error'); return; }
+      if (!/^\d{4}$/.test(payload.id) && !/^STU[-_]?\d{3,}$/i.test(payload.id) && !editing) {
+        toast('رقم الطالب يجب أن يكون 4 أرقام (1001) أو رمز بطاقة 3.5 (STU-1001).', 'error');
+        return;
+      }
       if (!payload.name || !payload.classroom) { toast('اسم الطالب والصف مطلوبان.', 'error'); return; }
       if (editing) payload.originalId = student.id;
       setBusy(save, true);
@@ -165,7 +168,7 @@
     save.addEventListener('click', submit);
     modal = ui.openModal(editing ? 'تعديل طالب' : 'إضافة طالب', h('div', { className: 'stack' }, [
       ui.alertBox('رقم الطالب ثابت بعد الإنشاء. لتغيير الرقم أضف طالبًا جديدًا.', 'info'),
-      ui.labeled('رقم الطالب', idInput, '4 أرقام، مثال: 1001'),
+      ui.labeled('رقم الطالب', idInput, '4 أرقام (1001) أو رمز بطاقة 3.5 المطبوع (STU-1001).'),
       ui.labeled('اسم الطالب', nameInput),
       ui.labeled('الصف', classroomInput, 'اختر من الصفوف المحفوظة أو اكتب صفًا جديدًا.'),
       ui.labeled('جوال ولي الأمر', phoneInput, 'اختياري.'),
@@ -189,7 +192,7 @@
 
   function importCard() {
     var textarea = h('textarea', {
-      id: 'importText', rows: 10, dir: 'ltr', placeholder: '1001,أحمد محمد,الصف الأول,0555555555\n1002,سارة علي,الصف الثاني,'
+      id: 'importText', rows: 10, dir: 'ltr', placeholder: 'STU-1001,أحمد محمد,الصف الأول,0555555555\n1002,سارة علي,الصف الثاني,'
     });
     var run = h('button', { className: 'btn primary', type: 'button', text: 'استيراد الطلاب' });
     function parse() {
