@@ -3,8 +3,13 @@ node_modules/
 .clasprc.json
 *.log
 dist/
+dist-desktop/
 tmp/
 tools/.vendor.js
 .DS_Store
+secrets/
+desktop/.data/
+desktop/out/
+desktop/resources/*.seed.json
 # حزمة التسليم/المرجع القديمة تبقى محليًا ولا تُخلط مع المصدر.
 school-attendance-v3.6/

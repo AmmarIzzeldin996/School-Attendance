@@ -1,0 +1,95 @@
+{
+  "name": "school-attendance-desktop",
+  "version": "3.6.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "نظام الحضور والانصراف — تطبيق سطح المكتب المستقل مع مزامنة محلية ونسخ سحابي",
+  "main": "main.js",
+  "author": "School Attendance",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "dist": "electron-builder --win --x64",
+    "pack": "electron-builder --win --x64 --dir",
+    "icon": "node tools/make-icon.js",
+    "import-students": "node tools/import-students.js",
+    "test": "vitest run --root .. desktop/test"
+  },
+  "dependencies": {
+    "xlsx": "0.18.5"
+  },
+  "devDependencies": {
+    "electron": "45.2.3",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "sa.school.attendance.desktop",
+    "productName": "نظام الحضور والانصراف",
+    "copyright": "School Attendance",
+    "asar": true,
+    "forceCodeSigning": false,
+    "directories": {
+      "output": "../dist-desktop",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "server.js",
+      "lib/**/*",
+      "vm/**/*",
+      "sync/**/*",
+      "backup/**/*",
+      "data/**/*",
+      "ui/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../src",
+        "to": "app-src",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "School-Attendance-Setup-${version}-x64.${ext}"
+    },
+    "portable": {
+      "artifactName": "School-Attendance-Portable-${version}-x64.exe",
+      "requestExecutionLevel": "user"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "نظام الحضور والانصراف",
+      "installerLanguages": [
+        "ar_SA"
+      ],
+      "language": "1025",
+      "unicode": true,
+      "deleteAppDataOnUninstall": false
+    }
+  }
+}

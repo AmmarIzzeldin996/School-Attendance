@@ -1,0 +1,320 @@
+/* لوحة سطح المكتب: المزامنة والنسخ السحابي واستيراد الطلاب.
+   تعتمد على متغيرات التصميم المعرّفة في ui_Styles.html مع بدائل آمنة. */
+
+.modal-card.ds-card {
+  max-width: 1040px;
+  width: min(1040px, 96vw);
+}
+
+.ds-body {
+  background: var(--surface-2, #f5f8f9);
+}
+
+.ds-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 16px;
+  border: 1px solid var(--line, #d8e2e7);
+  border-radius: 12px;
+  background: var(--surface, #fff);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.ds-tab {
+  flex: 1 1 auto;
+  min-width: 110px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted, #5d7180);
+  font: inherit;
+  font-size: .86rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+
+.ds-tab:hover {
+  background: var(--brand-soft, #e8f1f2);
+  color: var(--ink, #14262e);
+}
+
+.ds-tab.active {
+  background: linear-gradient(145deg, var(--brand, #173f5f), var(--brand-2, #206a7a));
+  color: #fff;
+  box-shadow: 0 6px 14px rgba(23, 63, 95, .2);
+}
+
+.ds-tab-body {
+  display: grid;
+  gap: 14px;
+}
+
+.ds-section {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--line, #d8e2e7);
+  border-radius: 14px;
+  background: var(--surface, #fff);
+  box-shadow: 0 10px 26px rgba(20, 38, 46, .05);
+}
+
+.ds-section-head {
+  display: grid;
+  gap: 2px;
+}
+
+.ds-section-head h4 {
+  margin: 0;
+  font-size: .98rem;
+  color: var(--ink, #14262e);
+}
+
+.ds-section-head .hint {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.ds-summary {
+  display: grid;
+  gap: 4px;
+  padding: 12px 16px;
+  border: 1px solid var(--line, #d8e2e7);
+  border-radius: 14px;
+  background: linear-gradient(145deg, #ffffff, #f2f8f8);
+}
+
+.ds-summary b {
+  font-size: .95rem;
+}
+
+.ds-summary .hint {
+  font-size: .8rem;
+}
+
+.ds-field {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--ink, #14262e);
+}
+
+.ds-field input,
+.ds-field select {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line, #d8e2e7);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--ink, #14262e);
+  font: inherit;
+  font-size: .86rem;
+  font-weight: 400;
+}
+
+.ds-field input:focus,
+.ds-field select:focus {
+  outline: 2px solid rgba(42, 161, 152, .35);
+  border-color: var(--accent, #2aa198);
+}
+
+.ds-field input[readonly] {
+  background: var(--surface-2, #f5f8f9);
+  color: var(--muted, #5d7180);
+}
+
+.ds-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ds-inline input[type="file"] {
+  flex: 1 1 220px;
+  min-width: 0;
+  font-size: .82rem;
+}
+
+.ds-code {
+  flex: 1 1 260px;
+  font-family: Consolas, "Courier New", monospace !important;
+  letter-spacing: .4px;
+}
+
+.ds-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px dashed var(--line, #d8e2e7);
+  border-radius: 10px;
+  background: var(--surface-2, #f5f8f9);
+  font-size: .84rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.ds-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent, #2aa198);
+}
+
+.ds-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ds-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ds-alert-slot:empty {
+  display: none;
+}
+
+.ds-alert-slot .alert {
+  margin-bottom: 0;
+}
+
+.ds-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .82rem;
+  background: #fff;
+  border: 1px solid var(--line, #d8e2e7);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.ds-table th,
+.ds-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line, #e4ebee);
+  text-align: right;
+  vertical-align: middle;
+}
+
+.ds-table thead th {
+  background: var(--surface-2, #f5f8f9);
+  color: var(--muted, #5d7180);
+  font-size: .76rem;
+  font-weight: 700;
+}
+
+.ds-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.ds-table tbody tr:hover {
+  background: #f7fbfb;
+}
+
+.ds-add-peer {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px dashed var(--line, #d8e2e7);
+  border-radius: 12px;
+  background: var(--surface-2, #f5f8f9);
+}
+
+.ds-preview {
+  display: grid;
+  gap: 8px;
+}
+
+.ds-preview:empty {
+  display: none;
+}
+
+.ds-preview p {
+  margin: 0;
+}
+
+.ds-links {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: .84rem;
+  padding-top: 4px;
+}
+
+.ds-links a {
+  color: var(--brand-2, #206a7a);
+  font-weight: 600;
+  text-decoration: none;
+  border-bottom: 1px dashed currentColor;
+}
+
+.ds-links a:hover {
+  color: var(--brand, #173f5f);
+}
+
+.ds-info {
+  display: grid;
+  grid-template-columns: minmax(140px, max-content) 1fr;
+  gap: 6px 14px;
+  margin: 0;
+  font-size: .84rem;
+}
+
+.ds-info dt {
+  color: var(--muted, #5d7180);
+  font-weight: 600;
+}
+
+.ds-info dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ds-path {
+  font-family: Consolas, "Courier New", monospace;
+  font-size: .78rem;
+  color: var(--muted, #5d7180);
+}
+
+.desktop-entry::before {
+  content: "⚙";
+  margin-inline-end: 5px;
+  font-size: .95em;
+}
+
+/* شاشات صغيرة: عمود واحد وأزرار بعرض كامل. */
+@media (max-width: 720px) {
+  .ds-grid-3 {
+    grid-template-columns: 1fr;
+  }
+
+  .ds-info {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  .ds-info dd {
+    margin-bottom: 8px;
+  }
+
+  .ds-actions .btn {
+    flex: 1 1 auto;
+  }
+
+  .ds-tab {
+    min-width: 92px;
+  }
+}

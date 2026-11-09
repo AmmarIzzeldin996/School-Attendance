@@ -8,7 +8,10 @@
     "vendor": "node tools/build-vendor.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "verify": "node tools/verify.mjs"
+    "verify": "node tools/verify.mjs",
+    "desktop": "npm --prefix desktop run start",
+    "desktop:dist": "npm --prefix desktop run dist",
+    "desktop:test": "vitest run desktop/test"
   },
   "devDependencies": {
     "esbuild": "0.28.2",

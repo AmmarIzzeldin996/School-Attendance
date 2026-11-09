@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>تهيئة نظام الحضور والانصراف</title>
+  <style>
+    :root {
+      --brand: #173f5f;
+      --brand-2: #206a7a;
+      --accent: #2aa198;
+      --paper: #f4f7f8;
+      --ink: #14262e;
+      --muted: #5d7180;
+      --line: #d8e2e7;
+      --danger: #b02a37;
+      --ok: #1f7a4d;
+      --radius: 16px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: "Segoe UI", Tahoma, "Noto Naskh Arabic", Arial, sans-serif;
+      background:
+        radial-gradient(1100px 500px at 85% -10%, #d8ecec 0%, transparent 60%),
+        radial-gradient(900px 450px at -10% 110%, #dfe9f3 0%, transparent 55%),
+        var(--paper);
+      color: var(--ink);
+      line-height: 1.7;
+      padding: 28px 18px 60px;
+    }
+    .shell { max-width: 1080px; margin: 0 auto; }
+    .brand { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+    .mark {
+      width: 56px; height: 56px; border-radius: 18px; display: grid; place-items: center;
+      background: linear-gradient(145deg, var(--brand), var(--brand-2));
+      color: #fff; font-size: 1.6rem; font-weight: 700;
+      box-shadow: 0 12px 26px rgba(23, 63, 95, .25);
+    }
+    .brand h1 { margin: 0; font-size: 1.5rem; letter-spacing: -.2px; }
+    .brand p { margin: 2px 0 0; color: var(--muted); font-size: .9rem; }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 18px; }
+    @media (min-width: 900px) { .grid { grid-template-columns: 1.05fr .95fr; align-items: start; } }
+    .card {
+      background: rgba(255,255,255,.92); border: 1px solid var(--line);
+      border-radius: var(--radius); padding: 22px;
+      box-shadow: 0 18px 45px rgba(20, 38, 46, .07);
+      backdrop-filter: blur(6px);
+    }
+    .card h2 { margin: 0 0 4px; font-size: 1.15rem; }
+    .card .sub { margin: 0 0 18px; color: var(--muted); font-size: .88rem; }
+    .field { display: grid; gap: 6px; margin-bottom: 14px; }
+    label { font-size: .86rem; font-weight: 600; }
+    input[type=text], input[type=url], input[type=file] {
+      width: 100%; padding: 10px 12px; border: 1px solid var(--line);
+      border-radius: 10px; font: inherit; background: #fff; color: var(--ink);
+    }
+    input[type=text]:focus, input[type=url]:focus { outline: 2px solid rgba(42, 161, 152, .35); border-color: var(--accent); }
+    .hint { color: var(--muted); font-size: .78rem; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      border: 1px solid var(--line); background: #fff; color: var(--ink);
+      padding: 10px 18px; border-radius: 10px; font: inherit; font-weight: 600;
+      cursor: pointer; transition: .15s ease; text-decoration: none;
+    }
+    .btn:hover { background: #f0f6f6; }
+    .btn.primary { background: linear-gradient(145deg, var(--brand), var(--brand-2)); color: #fff; border: none; box-shadow: 0 10px 22px rgba(23,63,95,.2); }
+    .btn.primary:hover { filter: brightness(1.06); }
+    .btn:disabled { opacity: .55; cursor: not-allowed; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .alert { border-radius: 10px; padding: 10px 12px; font-size: .86rem; margin: 12px 0; display: none; }
+    .alert.show { display: block; }
+    .alert.error { background: #fdecee; color: var(--danger); border: 1px solid #f4c6cb; }
+    .alert.ok { background: #e9f7ef; color: var(--ok); border: 1px solid #bfe6cf; }
+    .alert.warn { background: #fff6e5; color: #86560d; border: 1px solid #f3ddb1; }
+    .peers { display: grid; gap: 8px; margin-top: 10px; }
+    .peer { display: flex; align-items: center; gap: 10px; border: 1px dashed var(--line); border-radius: 10px; padding: 8px 10px; }
+    .peer .spacer { flex: 1; }
+    .peer small { color: var(--muted); direction: ltr; }
+    .status-line { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: .82rem; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #b9c6cd; display: inline-block; }
+    .dot.on { background: #26a269; box-shadow: 0 0 0 3px rgba(38,162,105,.15); }
+    .credentials { display: grid; gap: 10px; margin: 14px 0; }
+    .cred { display: flex; align-items: center; gap: 10px; background: #f4f9f9; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+    .cred code { font-size: 1.1rem; direction: ltr; font-family: Consolas, monospace; background: #fff; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--line); }
+    .cred .spacer { flex: 1; }
+    .divider { height: 1px; background: var(--line); margin: 22px 0; }
+    .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 14px 0; }
+    .kpi { background: #f7fbfb; border: 1px solid var(--line); border-radius: 12px; padding: 10px; text-align: center; }
+    .kpi b { display: block; font-size: 1.25rem; }
+    .kpi span { color: var(--muted); font-size: .76rem; }
+    .hidden { display: none !important; }
+    .steps { display: flex; gap: 6px; margin-bottom: 16px; font-size: .78rem; color: var(--muted); flex-wrap: wrap; }
+    .steps span { padding: 3px 10px; border-radius: 999px; background: #eef4f5; }
+    .steps span.active { background: var(--brand); color: #fff; }
+    .file-preview { font-size: .84rem; color: var(--muted); margin-top: 8px; white-space: pre-line; }
+    .footer { text-align: center; color: var(--muted); font-size: .78rem; margin-top: 28px; }
+    .table-mini { width: 100%; border-collapse: collapse; font-size: .8rem; margin-top: 8px; }
+    .table-mini th, .table-mini td { border-bottom: 1px solid var(--line); padding: 5px 6px; text-align: right; }
+    .table-mini th { color: var(--muted); font-weight: 600; }
+  </style>
+</head>
+<body>
+<div class="shell">
+  <div class="brand">
+    <div class="mark" aria-hidden="true">ح</div>
+    <div>
+      <h1>نظام الحضور والانصراف — تهيئة سطح المكتب</h1>
+      <p>نسخة مستقلة لكل جهاز، مع مزامنة محلية على شبكة المدرسة ونسخ احتياطي إلى Google Drive.</p>
+    </div>
+  </div>
+
+  <div class="grid">
+    <section class="card" id="newCard">
+      <div class="steps"><span class="active">تهيئة جهاز أساسي</span><span>أو الانضمام لجهاز موجود</span></div>
+      <h2>تهيئة جديدة</h2>
+      <p class="sub">أنشئ قاعدة بيانات محلية على هذا الجهاز، ثم أضف بقية الأجهزة عبر «الانضمام».</p>
+
+      <div id="newAlert" class="alert"></div>
+
+      <div class="field">
+        <label for="schoolName">اسم المدرسة</label>
+        <input id="schoolName" type="text" maxlength="100" placeholder="مدرسة ...">
+      </div>
+      <div class="field">
+        <label for="systemName">اسم النظام الظاهر</label>
+        <input id="systemName" type="text" maxlength="100" value="نظام الحضور والانصراف">
+      </div>
+
+      <div class="field">
+        <label for="studentFile">ملف الطلاب (Excel أو CSV) — اختياري</label>
+        <input id="studentFile" type="file" accept=".xlsx,.xls,.csv">
+        <span class="hint">الأعمدة المطلوبة: رقم الطالب، اسم الطالب، الصف والفصل. يُهمل أي سجل تاريخي للحضور.</span>
+      </div>
+      <div class="file-preview" id="filePreview"></div>
+
+      <div class="row" style="margin-top:14px">
+        <button class="btn primary" id="installBtn" type="button">تهيئة النظام على هذا الجهاز</button>
+        <button class="btn" id="clearFileBtn" type="button">مسح الملف</button>
+      </div>
+
+      <div class="divider"></div>
+      <div class="status-line"><span class="dot"></span><span>البيانات تُحفظ محليًا أولًا. يعمل النظام دون إنترنت.</span></div>
+    </section>
+
+    <section class="card">
+      <div class="steps"><span>تهيئة جهاز أساسي</span><span class="active">الانضمام لجهاز موجود</span></div>
+      <h2>الانضمام إلى جهاز موجود</h2>
+      <p class="sub">انسخ بيانات المدرسة والطلاب من جهاز مُهيأ على نفس الشبكة، ثم ستتزامن الأجهزة تلقائيًا.</p>
+
+      <div id="joinAlert" class="alert"></div>
+
+      <div class="field">
+        <label>الأجهزة المكتشفة على الشبكة</label>
+        <div class="peers" id="peerList"><span class="hint">جارٍ البحث على الشبكة المحلية…</span></div>
+        <span class="hint">إن لم يظهر الجهاز، أدخل عنوانه ومفتاح المزامنة يدويًا من إعدادات الجهاز الآخر.</span>
+      </div>
+
+      <div class="field">
+        <label for="joinUrl">عنوان الجهاز</label>
+        <input id="joinUrl" type="url" dir="ltr" placeholder="http://192.168.1.10:43118">
+      </div>
+      <div class="field">
+        <label for="joinKey">مفتاح المزامنة</label>
+        <input id="joinKey" type="text" dir="ltr" placeholder="مفتاح الجهاز">
+      </div>
+
+      <div class="row" style="margin-top:14px">
+        <button class="btn primary" id="joinBtn" type="button">الانضمام ومزامنة البيانات</button>
+        <button class="btn" id="refreshPeersBtn" type="button">تحديث البحث</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="card hidden" id="successCard" style="margin-top:18px; max-width:720px; margin-inline:auto">
+    <h2 id="successTitle">تمت التهيئة بنجاح</h2>
+    <p class="sub" id="successSub"></p>
+    <div id="successAlert" class="alert ok show"></div>
+
+    <div id="credBox" class="hidden">
+      <div class="alert warn show">احفظ كلمة المرور المؤقتة الآن؛ لن تُعرض مرة أخرى. سيُطلب تغييرها عند أول دخول.</div>
+      <div class="credentials">
+        <div class="cred"><strong>اسم المستخدم</strong><span class="spacer"></span><code id="adminUser">-</code><button class="btn" data-copy="adminUser" type="button">نسخ</button></div>
+        <div class="cred"><strong>كلمة المرور المؤقتة</strong><span class="spacer"></span><code id="adminPass">-</code><button class="btn" data-copy="adminPass" type="button">نسخ</button></div>
+      </div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi"><b id="kStudents">0</b><span>طالب</span></div>
+      <div class="kpi"><b id="kRecords">0</b><span>سجل حضور</span></div>
+      <div class="kpi"><b id="kDays">0</b><span>يوم</span></div>
+    </div>
+
+    <div class="row">
+      <a class="btn primary" href="/">فتح النظام الآن</a>
+      <button class="btn" id="openDataBtn" type="button">فتح مجلد البيانات</button>
+    </div>
+  </div>
+
+  <p class="footer" id="footer">إصدار سطح المكتب — التحقق الأولي ثم التهيئة المحلية.</p>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var state = { students: null, fileName: '', peers: [] };
+
+  function alertBox(el, message, type) {
+    el.className = 'alert show ' + (type || 'error');
+    el.textContent = message || '';
+  }
+  function clearAlert(el) { el.className = 'alert'; el.textContent = ''; }
+  function setBusy(button, busy) { button.disabled = !!busy; }
+
+  function postJson(url, body, raw) {
+    var options = { method: 'POST', headers: {} };
+    if (raw) { options.body = body; }
+    else { options.headers['content-type'] = 'application/json'; options.body = JSON.stringify(body || {}); }
+    return fetch(url, options).then(function (response) {
+      return response.text().then(function (text) {
+        var data = null;
+        try { data = text ? JSON.parse(text) : null; } catch (error) { data = null; }
+        if (!response.ok) {
+          throw new Error((data && (data.error || data.message)) || ('فشل الطلب: ' + response.status));
+        }
+        return data;
+      });
+    });
+  }
+  function getJson(url) {
+    return fetch(url, { headers: { accept: 'application/json' } }).then(function (response) {
+      return response.text().then(function (text) {
+        var data = null;
+        try { data = text ? JSON.parse(text) : null; } catch (error) { data = null; }
+        if (!response.ok) throw new Error((data && data.error) || ('فشل الطلب: ' + response.status));
+        return data;
+      });
+    });
+  }
+
+  function renderPeers() {
+    var list = $('peerList');
+    list.innerHTML = '';
+    if (!state.peers.length) {
+      var empty = document.createElement('span');
+      empty.className = 'hint';
+      empty.textContent = 'لم يُعثر على أجهزة بعد. تأكد من فتح النظام على الجهاز الآخر ومن اتصال الشبكة.';
+      list.appendChild(empty);
+      return;
+    }
+    state.peers.forEach(function (peer) {
+      var row = document.createElement('div');
+      row.className = 'peer';
+      var name = document.createElement('strong');
+      name.textContent = peer.name || peer.url;
+      var url = document.createElement('small');
+      url.textContent = peer.url;
+      var spacer = document.createElement('span');
+      spacer.className = 'spacer';
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn';
+      button.textContent = 'استخدام';
+      button.addEventListener('click', function () {
+        $('joinUrl').value = peer.url;
+        $('joinKey').value = peer.key || '';
+        clearAlert($('joinAlert'));
+      });
+      row.appendChild(name); row.appendChild(url); row.appendChild(spacer); row.appendChild(button);
+      list.appendChild(row);
+    });
+  }
+
+  function loadPeers() {
+    return getJson('/setup/peers').then(function (data) {
+      state.peers = (data && data.peers) || [];
+      renderPeers();
+    }).catch(function () { /* البحث المحلي اختياري */ });
+  }
+
+  function showSuccess(payload, title, sub) {
+    $('newCard').classList.add('hidden');
+    $('successCard').classList.remove('hidden');
+    $('successTitle').textContent = title;
+    $('successSub').textContent = sub || '';
+    $('successAlert').textContent = 'الجهاز جاهز للعمل. يمكن إغلاق هذه النافذة بعد فتح النظام.';
+    var counts = payload.counts || {};
+    $('kStudents').textContent = counts.students || 0;
+    $('kRecords').textContent = counts.records || 0;
+    $('kDays').textContent = counts.days || 0;
+    if (payload.account) {
+      $('credBox').classList.remove('hidden');
+      $('adminUser').textContent = payload.account.username || 'admin';
+      $('adminPass').textContent = payload.account.temporaryPassword || '';
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  $('studentFile').addEventListener('change', function (event) {
+    var file = event.target.files && event.target.files[0];
+    if (!file) return;
+    clearAlert($('newAlert'));
+    $('filePreview').textContent = 'جارٍ قراءة ' + file.name + '…';
+    file.arrayBuffer().then(function (buffer) {
+      return postJson('/setup/parse-students', buffer, true);
+    }).then(function (data) {
+      state.students = data.students || [];
+      state.fileName = file.name;
+      var lines = ['الملف: ' + file.name + ' | الورقة: ' + data.sheetName, 'طلاب صالحون: ' + data.count + ' من ' + data.total];
+      if (data.errors && data.errors.length) lines.push('أسطر مرفوضة: ' + data.errors.length + ' — ' + data.errors[0].message + ' (سطر ' + data.errors[0].line + ')');
+      if (data.duplicates && data.duplicates.length) lines.push('تكرارات مُهملة: ' + data.duplicates.length);
+      $('filePreview').textContent = lines.join('\n');
+      if (!data.count) alertBox($('newAlert'), 'الملف لا يحتوي على طلاب صالحين. تحقق من الأعمدة.', 'error');
+      else alertBox($('newAlert'), 'تم تحليل الملف. راجع العدد ثم ابدأ التهيئة.', 'ok');
+    }).catch(function (error) {
+      state.students = null;
+      $('filePreview').textContent = '';
+      alertBox($('newAlert'), error.message, 'error');
+    });
+  });
+
+  $('clearFileBtn').addEventListener('click', function () {
+    state.students = null;
+    state.fileName = '';
+    $('studentFile').value = '';
+    $('filePreview').textContent = '';
+    clearAlert($('newAlert'));
+  });
+
+  $('installBtn').addEventListener('click', function () {
+    var schoolName = $('schoolName').value.trim();
+    var systemName = $('systemName').value.trim() || 'نظام الحضور والانصراف';
+    if (!schoolName) { alertBox($('newAlert'), 'اسم المدرسة مطلوب.', 'error'); return; }
+    if (state.fileName && !state.students) { alertBox($('newAlert'), 'أعد اختيار ملف الطلاب أو امسحه قبل التهيئة.', 'error'); return; }
+    setBusy($('installBtn'), true);
+    clearAlert($('newAlert'));
+    postJson('/setup/install', { schoolName: schoolName, systemName: systemName, students: state.students || [] })
+      .then(function (data) {
+        showSuccess(data, 'تمت تهيئة النظام', 'أُنشئت قاعدة بيانات محلية على هذا الجهاز: ' + (data.bookId || ''));
+      })
+      .catch(function (error) {
+        alertBox($('newAlert'), error.message, 'error');
+      })
+      .finally(function () { setBusy($('installBtn'), false); });
+  });
+
+  $('joinBtn').addEventListener('click', function () {
+    var url = $('joinUrl').value.trim();
+    var key = $('joinKey').value.trim();
+    if (!url) { alertBox($('joinAlert'), 'أدخل عنوان الجهاز أو اختر جهازًا مكتشفًا.', 'error'); return; }
+    setBusy($('joinBtn'), true);
+    clearAlert($('joinAlert'));
+    postJson('/setup/join', { url: url, key: key })
+      .then(function (data) {
+        showSuccess({ counts: data, account: null }, 'تم الانضمام بنجاح', 'تم نسخ بيانات المدرسة من: ' + (data.deviceName || url));
+      })
+      .catch(function (error) {
+        alertBox($('joinAlert'), error.message, 'error');
+        setBusy($('joinBtn'), false);
+      });
+  });
+
+  $('refreshPeersBtn').addEventListener('click', function () { loadPeers(); });
+
+  document.querySelectorAll('[data-copy]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      var target = $(button.getAttribute('data-copy'));
+      if (!target) return;
+      var text = target.textContent || '';
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+          button.textContent = 'تم النسخ';
+          setTimeout(function () { button.textContent = 'نسخ'; }, 1500);
+        });
+      }
+    });
+  });
+
+  $('openDataBtn').addEventListener('click', function () {
+    if (window.desktopSA && window.desktopSA.openDataFolder) window.desktopSA.openDataFolder();
+  });
+
+  getJson('/setup/status').then(function (data) {
+    $('footer').textContent = 'إصدار ' + (data.version || '') + ' — الجهاز: ' + (data.deviceName || '') + ' — المنفذ: ' + (data.port || '');
+    if (data.installed) window.location.replace('/');
+  }).catch(function () { /* الصفحة تعمل حتى لو تعذرت الحالة */ });
+
+  loadPeers();
+  setInterval(loadPeers, 5000);
+})();
+</script>
+</body>
+</html>

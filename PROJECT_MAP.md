@@ -1,10 +1,10 @@
 # PROJECT_MAP — نظام الحضور والانصراف المدرسي (v3.6)
 
-> **الحالة:** **IMPLEMENTED & VERIFIED (محليًا)** — الكود جاهز للنشر، والتحقق الآلي كامل.
-> **الإصدار:** `3.6.0` • **وقت التشغيل:** Google Apps Script V8 • **قاعدة البيانات:** Google Sheets.
+> **الحالة:** **IMPLEMENTED & VERIFIED (محليًا)** — نظام Apps Script + تطبيق Windows سطح مكتب، والتحقق الآلي كامل.
+> **الإصدار:** `3.6.0` • **وقت التشغيل:** Google Apps Script V8 + Electron 45 (Windows x64) • **قاعدة البيانات:** Google Sheets + مخزن محلي.
 > **تاريخ الأساس:** 2026-11-07 (Asia/Riyadh، UTC+03:00).
-> **مصدر المتطلبات:** وثيقة نظام الحضور والانصراف 3.6 (المرجع 3.5).
-> **آخر تحقق:** `npm run verify` = OK • `npm test` = 73/73 ناجح.
+> **مصدر المتطلبات:** وثيقة نظام الحضور والانصراف 3.6 (المرجع 3.5) + متطلبات سطح المكتب والمزامنة.
+> **آخر تحقق:** `npm run verify` = OK • `npm test` = 115/115 ناجح (73 GAS + 42 سطح مكتب).
 
 ---
 
@@ -20,9 +20,15 @@
 | الكاميرا/الصور | `jsqr 1.4.0` | QR فقط؛ مُجمّع محليًا في `ui_Vendor.html` (≈‎149 ك.ب بدل 507) |
 | QR | `qrcode-generator 2.0.4` | `createDataURL` فقط |
 | كلمات المرور | `bcryptjs 2.4.3` داخل `00_PasswordCrypto.gs` | تكلفة 12، ملح من HMAC |
-| الاختبارات | `vitest 5.1.0` + محاكي GAS | 73 اختبارًا |
+| الاختبارات | `vitest 5.1.0` + محاكي GAS | 73 اختبارًا للنظام الأساسي + 42 لسطح المكتب |
 | البناء | `esbuild 0.28.2` | `npm run vendor` |
 | النشر | `clasp 3.x` | `.clasp.json` مستبعد من Git |
+| تطبيق سطح المكتب | Electron 45.2.3 + خادم HTTP محلي | يعيد استخدام منطق `.gs` داخل VM مع طبقة خدمات |
+| التخزين المحلي | `workbook.json` + كتابة ذرية | العمل دون إنترنت إلزامي |
+| المزامنة | HLC + سجل عمليات إلحاقي + HTTP بين الأقران | اكتشاف UDP على شبكة المدرسة |
+| النسخ السحابي | Google Sheets API + Drive API | حساب خدمة + تبويبات مقروءة وأرشيف JSON |
+| تشفير الأسرار | Electron `safeStorage` (DPAPI) + AES-GCM | مفتاح محلي عند غياب DPAPI |
+| حزم Windows | electron-builder 26.18.0 | NSIS + Portable x64 |
 
 ---
 
@@ -104,6 +110,51 @@ runRetention()
 Attendance و Audit لا يُحذفان تلقائيًا.
 ```
 
+### 6) تطبيق سطح المكتب — الإقلاع والتخزين
+
+```
+Electron main
+  ├─ resolveDataDir: Portable → <exe>\SchoolAttendanceData، مثبّت → userData\data
+  ├─ Runtime.init(): يحمّل ملفات .gs في VM مع خدمات تحاكي
+  │   SpreadsheetApp / PropertiesService / DriveApp / LockService
+  ├─ AppServer.listen: 127.0.0.1:43118 ثم 43119/43120/منفذ عشوائي
+  ├─ أول تشغيل: /setup/install لجهاز أساسي أو /setup/join لاستنساخ جهاز قائم
+  └─ بعد التهيئة: مزامنة + نسخ احتياطي + صيانة في الخلفية
+```
+
+- الواجهة والأعمال كلها محلية؛ لا يلزم اتصال Google للاستخدام اليومي.
+- كل كتابة إلى المخزن المحلي ذرية (ملف مؤقت ثم إعادة تسمية).
+- الجهاز يعمل بمعرّف `deviceId` ثابت ومفتاح مزامنة عشوائي.
+
+### 7) المزامنة بين الأجهزة
+
+```
+UDP discovery (deviceId + منفذ + مفتاح المزامنة)
+  → قائمة أقران على شبكة المدرسة
+  → GET /sync/changes?since=<cursor> مع x-sync-key
+  → applyOps: HLC آخر-كاتب-يفوز للصفوف
+  → دمج حقول الحضور (inAt/outAt) وبنود الرحلات (items)
+  → السجل المحلي يخدم بقية الأقران (full mesh)
+```
+
+- كل جهاز مستقل تمامًا، ويتبادل العمليات عند توفر الشبكة؛ لا يوجد خادم مركزي.
+- جهاز جديد: `/setup/join` يستدعي `/desktop/clone` ويستنسخ `workbook` و`properties`.
+- المزامنة لا تعتمد على الساعة وحدها: HLC مع حد انحراف ودمج حتمي.
+
+### 8) النسخ الاحتياطي السحابي
+
+```
+runNow
+  ├─ createBackup_ → نسخة محلية JSON داخل data/drive
+  ├─ تصدير attendance-<deviceId>-<stamp>.json و.xlsx في backups/exports
+  ├─ Google Sheets: تبويبات عربية مقروءة (الطلاب/الحضور/الأيام/...)
+  ├─ Google Drive: رفع JSON وXLSX عند توفر مساحة
+  └─ عند 403 storage quota: أرشيف JSON داخل تبويب JSON في جدول Google
+```
+
+- الاستعادة: `/desktop/backup/import-latest` يقرأ ملف Drive أو تبويب JSON ثم ينزّله للنسخ المحلية.
+- النسخ التلقائي يومي وفق وقت النسخ في إعدادات النظام، ومستقل عن `settings.autoBackup` في GAS.
+
 ---
 
 ## [MODULES]
@@ -132,6 +183,30 @@ Attendance و Audit لا يُحذفان تلقائيًا.
 | `ui_Trips.html` | الرحلات والسائقون وبطاقاتهم | تقارير |
 | `ui_Reports.html` | التقارير والتصفية وتصدير CSV | كتابة بيانات |
 | `ui_Settings.html` | عام، مستخدمون، نسخ، تدقيق، كلمة مرور | أعمال مباشرة |
+
+### وحدات سطح المكتب (`desktop/`)
+
+| الملف | المسؤولية | لا يفعل |
+|---|---|---|
+| `main.js` | دورة حياة Electron، النافذة، المؤقتات، IPC | منطق أعمال |
+| `server.js` | خادم HTTP محلي: الإعداد، API، المزامنة، النسخ | تعديل القاعدة مباشرة |
+| `preload.js` | جسر IPC محدود للواجهة | كشف Node للـrenderer |
+| `vm/runtime.js` | تحميل `.gs` في VM، install/join، API، صيانة | شبكة |
+| `vm/services.js` | محاكاة SpreadsheetApp/PropertiesService/DriveApp/LockService | منطق أعمال |
+| `data/store.js` | مخزن محلي، كتابة ذرية، التقاط تغييرات الصفوف | مزامنة |
+| `sync/model.js` | تعريف الجداول، مفاتيح الصفوف، التطبيع | نقل |
+| `sync/journal.js` | سجل `ops.jsonl` ومؤشرات الاستلام والتقليم | تطبيق |
+| `sync/engine.js` | توليد العمليات، مزامنة الأقران، الحالة | واجهة |
+| `sync/apply.js` | تطبيق العمليات، دمج الحقول/العناصر، الحذف | قراءة الملفات |
+| `sync/discovery.js` | اكتشاف UDP للأقران على LAN | مزامنة سحابية |
+| `backup/google.js` | OAuth حساب الخدمة، Sheets/Drive، أرشيف JSON | تشغيل النظام |
+| `backup/workbook.js` | استيراد الطلاب، تبويبات مقروءة، XLSX | تعديل القاعدة |
+| `backup/manager.js` | نسخ محلي/سحابي، استعادة، جدولة، تقليم | واجهة |
+| `ui/setup.html` | تهيئة جهاز أو الانضمام إلى جهاز آخر | واجهة GAS |
+| `ui/bridge.js` | جسر IPC الآمن للواجهة | منطق |
+| `ui/desktop-settings.js` | لوحة المزامنة والنسخ والاستيراد ومعلومات الجهاز | منطق خادم |
+| `tools/import-students.js` | استيراد دفعات من Excel/CSV دون سجلات حضور | حضور |
+| `tools/make-icon.js` | توليد أيقونة التطبيق | — |
 
 ---
 
@@ -172,6 +247,16 @@ Attendance و Audit لا يُحذفان تلقائيًا.
 | 29 | سياسة الاحتفاظ | `ui_Settings` | `runRetention` | `backup` |
 | 30 | ترحيل 3.5 | محرر فقط | `migrateV36` | `migration` |
 | 31 | التثبيت والصيانة | محرر فقط | `installSchool`, `maintenance_`, `recoverSupervisor` | `smoke`, `backup` |
+| 32 | تهيئة جهاز سطح مكتب جديد | `desktop/ui/setup.html` | `/setup/install`, `/setup/parse-students` | `desktop/server`, `desktop/workbook` |
+| 33 | انضمام جهاز إلى جهاز قائم | `desktop/ui/setup.html` | `/setup/join`, `/desktop/clone` | `desktop/server`, `desktop/sync` |
+| 34 | عمل كامل دون إنترنت | كل الواجهة | `/api` محلي | `desktop/store`, `desktop/server` |
+| 35 | مزامنة تلقائية/يدوية بين الأجهزة | لوحة سطح المكتب | `/desktop/sync/*`, `/sync/changes` | `desktop/sync` |
+| 36 | استيراد الطلاب من Excel/CSV | لوحة سطح المكتب + CLI | `importStudents`, `/desktop/parse-students` | `desktop/workbook`, `desktop/sync` |
+| 37 | نسخة محلية JSON + XLSX | لوحة سطح المكتب | `/desktop/backup/run` | `desktop/backup` |
+| 38 | نسخة سحابية مقروءة | لوحة سطح المكتب | `/desktop/backup/test`, `/desktop/backup/run` | `desktop/backup` |
+| 39 | استعادة أحدث نسخة سحابية | لوحة سطح المكتب | `/desktop/backup/import-latest` | `desktop/backup` |
+| 40 | معلومات الجهاز وتنزيل القاعدة | لوحة سطح المكتب | `/desktop/status`, `/desktop/database` | `desktop/server` |
+| 41 | استعادة كلمة مرور المشرف | شاشة الدخول | IPC `desktop:recover-admin` | `desktop/main`, `desktop/ui` |
 
 ---
 
@@ -220,6 +305,17 @@ Attendance و Audit لا يُحذفان تلقائيًا.
 10. الاستجابات العامة لا تحتوي `passwordHash` ولا `AUTH_SECRET` ولا `token_hash`.
 11. بريد مشرفي SSO يُقرأ ويُكتب من المشرف الأصلي فقط؛ أي مدير آخر لا يمكنه محوه أو تغييره.
 
+### سطح المكتب
+
+12. لوحة الإدارة و`/api` مقصورتان على `loopback`؛ مسارات المزامنة على LAN تتطلب `x-sync-key`.
+13. مفتاح المزامنة لا يُسجَّل في السجلات ولا يُرسل إلا لأقران الشبكة المحلية.
+14. بيانات حساب خدمة Google تُخزَّن مشفرة بـ`safeStorage` (DPAPI) أو AES-GCM، ولا تدخل النسخ الاحتياطية.
+15. كل كتابة إلى المخزن المحلي ذرية (ملف مؤقت ثم إعادة تسمية) لمنع التلف عند الانقطاع.
+16. النافذة تعمل بـ`contextIsolation` و`sandbox` و`nodeIntegration=false`، والروابط الخارجية عبر `shell.openExternal` فقط.
+17. لقطة النسخ الاحتياطي تحتوي جداول البيانات والإعدادات المنقّاة فقط؛ لا تحتوي `AUTH_SECRET` أو `passwordHash` أو جلسات.
+18. دمج المزامنة حتمي: HLC مع حد انحراف، وآخر-كاتب-يفوز للصفوف، ودمج حقول الحضور وبنود الرحلات.
+19. استعادة كلمة مرور المشرف تتطلب تأكيدًا في نافذة Electron أصلية، وتُصدر كلمة مؤقتة مرة واحدة وتُلغي الجلسات.
+
 ---
 
 ## [TEST_MAP]
@@ -235,7 +331,15 @@ Attendance و Audit لا يُحذفان تلقائيًا.
 | `backup.test.js` | 5 | الإنشاء، التقليم، الاستعادة، التراجع، الاحتفاظ |
 | `migration.test.js` | 6 | الأعمدة، رموز 3.5، الرحلات، التكرار، الأمان |
 | `contract.test.js` | 11 | 40 إجراءً، العقد، الصلاحيات، الأسرار، عقد UI، منع الحقن |
-| **الإجمالي** | **73** | **كل المسارات أعلاه** |
+| `desktop/test/hlc.test.mjs` | 2 | ترتيب HLC والانحراف الزمني |
+| `desktop/test/secrets.test.mjs` | 4 | DPAPI/AES-GCM، العبث، الحذف، التحقق |
+| `desktop/test/store.test.mjs` | 4 | هوية الجهاز، التقاط التغييرات، الحفظ الذري، الاستبدال |
+| `desktop/test/workbook.test.mjs` | 6 | استيراد الطلاب، التطبيع العربي، التكرار، الأخطاء |
+| `desktop/test/sync.test.mjs` | 6 | السجل، LWW، دمج الحضور، الرحلات، تقارب جهازين وثلاثة أجهزة |
+| `desktop/test/server.test.mjs` | 11 | المسارات، حماية loopback، API، الاستيراد، SETUP_REQUIRED، استعادة المشرف |
+| `desktop/test/backup.test.mjs` | 5 | نسخ محلي/تصدير، عدم التهيئة، الأسرار، الاحتفاظ |
+| `desktop/test/packaging.test.mjs` | 4 | اكتمال حزمة asar، `app-src`، تحليل كل سكربتات التشغيل والواجهة، أهداف x64 |
+| **الإجمالي** | **115** | **كل المسارات أعلاه** |
 
 `npm run verify` يفحص أيضًا: صياغة كل ملفات `.gs`، اكتمال `include` في `Index.html`،
 أن كل إجراء مستدعى من الواجهة معلن، وأن كل إجراء معلن (عدا `ping`) مستدعى، وغياب placeholders،
@@ -245,7 +349,9 @@ Attendance و Audit لا يُحذفان تلقائيًا.
 
 ## [DEPLOYMENT]
 
-الخطوات الكاملة في `docs/OPERATIONS.md`. الملخص:
+الخطوات الكاملة في `docs/OPERATIONS.md`، وملخص التسليم والمخرجات في `docs/DELIVERY.md`. الملخص:
+
+### Apps Script
 
 1. `npm install` ثم `npm run vendor` ثم `npm run verify` ثم `npm test`.
 2. `clasp push` بعد ضبط `.clasp.json` (غير ملتزم).
@@ -254,18 +360,41 @@ Attendance و Audit لا يُحذفان تلقائيًا.
 5. تسجيل الدخول بكلمة المرور المؤقتة وتغييرها.
 6. تنفيذ قائمة UAT في `docs/OPERATIONS.md §10`.
 
+### تطبيق Windows
+
+1. `npm --prefix desktop install` ثم `npm run desktop:dist`.
+2. المخرجات في `dist-desktop`:
+   - `School-Attendance-Setup-3.6.0-x64.exe` (مثبّت NSIS).
+   - `School-Attendance-Portable-3.6.0-x64.exe` (محمول، بلا تثبيت).
+3. التثبيت أو تشغيل المحمول. بيانات المحمول في `SchoolAttendanceData` بجوار الملف،
+   وبيانات المثبّت في `%APPDATA%\<app>\data`.
+4. أول تشغيل: «تهيئة مدرسة جديدة» أو «الانضمام إلى جهاز» بمفتاح المزامنة.
+5. استيراد الطلاب (اختياري): من لوحة «سطح المكتب ← استيراد الطلاب»، أو:
+   ```powershell
+   npm --prefix desktop run import-students -- --file "E:\projects\بيانات الطلاب.xlsx" --data-dir "<مجلد البيانات>" --dry-run
+   ```
+6. إعداد حساب خدمة Google من «سطح المكتب ← النسخ السحابي» (اختياري لكنه موصى به).
+7. التوقيع الرقمي (اختياري): ضع `CSC_LINK` و`CSC_KEY_PASSWORD` لشهادة PFX قبل البناء،
+   ثم تحقق بـ`Get-AuthenticodeSignature`. بلا شهادة يبقى البناء غير موقّع ويظهر SmartScreen.
+
 ---
 
 ## [ORPHANS & PENDING]
 
-**لا يوجد.**
+**لا يوجد كود يتيم.** كل ميزة مرتبطة بمسار مستخدم، وإجراء/مسار خادم، وواجهة، وشاهد اختبار.
+لا توجد أزرار بلا معالج، ولا placeholders أو `TODO`.
 
-كل ميزة في وثيقة 3.6 مرتبطة بمسار مستخدم، وإجراءات خادم معلنة، وواجهة، وشاهد اختبار.
-لا توجد أزرار بلا معالج، ولا إجراءات خادم غير مستدعاة (عدا `ping` فحص صحة مقصود)،
-ولا جداول/أعمدة بلا قارئ أو كاتب، ولا placeholders أو `TODO`.
+البنود المتبقية خارجية أو تشغيلية وليست عيوبًا في الكود:
 
-بنود التحقق الخارجي (نشر فعلي، كاميرا، نطاق Google، UAT بشري) ليست عيوبًا في الكود؛
-هي خطوات تسليم موثّقة في `docs/OPERATIONS.md §10`، وتُغلق عند توفر `scriptId` وبيئة المدرسة.
+| البند | الحالة | ما يلزم |
+|---|---|---|
+| رفع JSON/XLSX كملفات في Drive الشخصي | محجوب من Google لحسابات الخدمة (`Service Accounts do not have storage quota`) | OAuth بموافقة المستخدم أو Google Workspace Shared Drive. البديل الحالي: تبويب `JSON` في جدول Google + نسختان محليتان |
+| روزنامة 100 طالب | الملف المتاح يحتوي 44 طالبًا (`STU-1001`…`STU-1044`) | توفير ملف الـ100 طالب ثم تشغيل `import-students` |
+| كاميرا الهاتف، قارئ USB، SSO بنطاق Google | لم تُختبر على أجهزة المدرسة | UAT خارجي في `docs/OPERATIONS.md §18` |
+| توقيع EXE رقميًا | البناء يدعم التوقيع عبر `CSC_LINK`/`CSC_KEY_PASSWORD`، لكن لا توجد شهادة PFX في المشروع | توفير شهادة Code Signing موثوقة (أو شهادة داخلية موزّعة) ثم إعادة البناء |
+| تشغيل 3–5 أجهزة على LAN فعلي | اختبار التقارب آلي فقط | UAT على شبكة المدرسة |
+
+مخرجات البناء الحالية موجودة في `dist-desktop/` ولم تُلتزم في Git.
 
 ---
 
@@ -280,3 +409,13 @@ Attendance و Audit لا يُحذفان تلقائيًا.
 - دعم بطاقات 3.5 المطبوعة (STU-####) في المسح والاستيراد دون كسر البطاقات القديمة.
 - تقارير ثمانية، تصدير CSV، نسخ/استعادة/احتفاظ، وسجل تدقيق.
 - 73 اختبارًا + فحص تحقق ساكن، وتوثيق تشغيلي كامل.
+
+### 3.6.0 — سطح المكتب
+- تطبيق Electron مستقل يعيد استخدام منطق `.gs` عبر VM وطبقة خدمات، ويعمل دون إنترنت.
+- مخزن محلي ذري، جهاز بهوية ثابتة، وجلسات/أسرار مشفرة.
+- مزامنة full-mesh على LAN: اكتشاف UDP، سجل عمليات إلحاقي، HLC، ودمج حقول الحضور وبنود الرحلات.
+- استيراد روزنامة الطلاب من Excel/CSV عبر الواجهة أو سطر الأوامر، دون سجلات حضور تاريخية.
+- نسخ احتياطي محلي JSON/XLSX، ونسخ سحابي بجدول Google مقروء، مع أرشيف `JSON` عند منع Google رفع الملفات الثنائية.
+- مثبّت NSIS ومحمول x64 مع أيقونة، ودعم توقيع اختياري عبر شهادة PFX، وتوثيق SmartScreen.
+- استعادة كلمة مرور المشرف من شاشة الدخول بعد تأكيد أصلي، بكلمة مؤقتة تُعرض مرة واحدة.
+- 42 اختبار سطح مكتب إضافي (إجمالي 115)، بما فيها تقارب ثلاثة أجهزة وفحص حزمة يمنع نقص وحدات وقت التشغيل وأخطاء تحليل السكربتات.
