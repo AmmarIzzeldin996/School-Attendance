@@ -11,13 +11,25 @@
 
 | الملف | الحجم | SHA-256 |
 |---|---:|---|
-| `School-Attendance-Setup-3.6.0-x64.exe` | 123,298,955 بايت | `83C2BF1E3DFF5855DB3AAE589E0A1B6C0D9D95AC4518F97828EEBDDE8939C619` |
-| `School-Attendance-Portable-3.6.0-x64.exe` | 111,498,471 بايت | `958C469499F650A2840C805916A61F69A897AC7D336D6F092249B32DA73C147D` |
+| `School-Attendance-Setup-3.6.0-x64.exe` | 123,336,928 بايت | `AAE58C794EAD96AA8A023842AE766D791436E11943F486E9153D8532D4864170` |
+| `School-Attendance-Portable-3.6.0-x64.exe` | 111,531,064 بايت | `BE906484951B89CB239C3973A6E979AF8B2D50B1FE1157636C48A9F595092179` |
 
-- **التوقيع الرقمي:** غير موقّع (`NotSigned`). لا توجد شهادة Code Signing في المشروع.
-  عند التشغيل يظهر SmartScreen: **More info ← Run anyway**.
-- لدعم التوقيع: راجع `docs/OPERATIONS.md §12` (شهادة PFX + `CSC_LINK` و`CSC_KEY_PASSWORD`).
-- `win-unpacked/` نسخة غير محزومة للفحص فقط.
+- **التوقيع الرقمي:** موقّع بالشهادة الداخلية `School Attendance Internal Code Signing`،
+  والحالة على جهاز البناء **`Valid`** (`Signature verified`).
+- الشهادة العامة للتوزيع: `tools\codesign\school-attendance-codesign.cer`
+  (البصمة `CB0B425656B1696D9B55B271AA4BC6C52FF56769`).
+- المفتاح الخاص (`PFX`) وكلمة مروره في `secrets\codesign\` فقط، وغير ملتزمين في Git.
+- على أي جهاز جديد: ثبّت الشهادة العامة أولًا:
+  ```powershell
+  powershell -NoProfile -ExecutionPolicy Bypass -File tools\trust-internal-signing.ps1 -Scope LocalMachine
+  ```
+  ثم ستكون حالة التوقيع `Valid` ويختفي تحذير الناشر غير المعروف.
+- إعادة البناء الموقّع: `powershell -NoProfile -ExecutionPolicy Bypass -File tools\build-desktop-signed.ps1`
+- `win-unpacked/` نسخة غير محزومة للفحص فقط، لكنها موقّعة أيضًا.
+
+> ملاحظة: الشهادة داخلية (Self-Signed) وليست من CA عامة، لذلك قد يستمر SmartScreen
+> في إظهار تحذير «سمعة» على أجهزة لم تُثبَّت عليها الشهادة. تثبيت الشهادة في
+> `Trusted Root` و`Trusted Publishers` هو ما يجعلها موثوقة على أجهزة المدرسة.
 
 ### التحقق من السلامة
 
@@ -115,6 +127,7 @@ npm.cmd --prefix desktop run import-students -- --file "E:\projects\بيانات
 | رسالة النسخ السحابي | تظهر كنجاح أخضر مع مسار `backups\exports` وزر فتح المجلد |
 | استعادة المشرف | كلمة مؤقتة جديدة، والقديمة تُرفض، وتُلزم بالتغيير |
 | تقارب الأجهزة | جهازان وثلاثة أجهزة تصل إلى نفس البيانات |
+| التوقيع الرقمي | المثبّت والمحمول و`win-unpacked` موقّعة، والحالة `Valid` بعد تثبيت الشهادة |
 
 ---
 
@@ -123,7 +136,7 @@ npm.cmd --prefix desktop run import-students -- --file "E:\projects\بيانات
 | البند | الحالة |
 |---|---|
 | 100 طالب | الملف المتاح 44 فقط؛ يلزم توفير الـ56 الباقين |
-| توقيع EXE موثوق | لا توجد شهادة PFX؛ التوقيع مدعوم لكن غير مطبّق |
+| توقيع EXE موثوق | موقّع بشهادة داخلية؛ يلزم تثبيت الشهادة على كل جهاز لتظهر كموثوقة |
 | ملفات JSON/XLSX في Drive الشخصي | محجوبة لحسابات الخدمة؛ البديل تبويب `JSON` |
 | كاميرا الهاتف/USB/SSO | لم تُختبر على أجهزة المدرسة (UAT خارجي) |
 | شبكة المدرسة الفعلية | اختبار التقارب آلي؛ يلزم UAT على 3–5 أجهزة حقيقية |

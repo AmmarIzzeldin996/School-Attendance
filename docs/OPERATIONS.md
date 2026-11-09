@@ -165,34 +165,59 @@ npm.cmd run desktop:dist
 | `School-Attendance-Portable-3.6.0-x64.exe` | نسخة محمولة تعمل من أي مجلد أو USB |
 | `win-unpacked/` | نسخة غير محزومة للفحص السريع |
 
-- التطبيق غير موقّع افتراضيًا. عند ظهور SmartScreen: **More info ← Run anyway**.
+- البيانات تُشغَّل موقّعة بالشهادة الداخلية عند البناء عبر
+  `tools\build-desktop-signed.ps1` (انظر «التوقيع الرقمي» أدناه).
 - بيانات المحمول في `SchoolAttendanceData` بجوار ملف التشغيل.
 - بيانات المثبّت في `%APPDATA%\school-attendance-desktop\data`.
 - للنسخ الاحتياطي اليدوي: أغلق التطبيق وانسخ مجلد البيانات كاملًا.
 
-### التوقيع الرقمي (اختياري)
+### التوقيع الرقمي الداخلي
 
-`electron-builder` يوقّع تلقائيًا عند توفير شهادة توقيع كود بصيغة PFX/P12:
+المشروع يتضمن شهادة توقيع كود **داخلية (Self-Signed)** مُنشأة خصيصًا لهذا النظام:
+
+| البند | القيمة |
+|---|---|
+| الموضوع | `CN=School Attendance Internal Code Signing, O=School Attendance, C=SA` |
+| البصمة (SHA-1) | `CB0B425656B1696D9B55B271AA4BC6C52FF56769` |
+| الصلاحية | 5 سنوات |
+| الاستخدام | Code Signing (1.3.6.1.5.5.7.3.3) + Digital Signature |
+| الملفات | `secrets\codesign\` (غير ملتزمة في Git) |
+
+- `school-attendance-codesign.pfx` — الشهادة مع المفتاح الخاص (سرّي).
+- `school-attendance-codesign.cer` — الشهادة العامة للتوزيع.
+- `pfx-password.txt` — كلمة مرور PFX (سرّية، لا تُشارك).
+
+**بناء موقّع:**
 
 ```powershell
-$env:CSC_LINK = 'E:\projects\codesign.pfx'
-$env:CSC_KEY_PASSWORD = '<كلمة مرور الشهادة>'
-npm.cmd run desktop:dist
-Remove-Item Env:CSC_LINK, Env:CSC_KEY_PASSWORD
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\build-desktop-signed.ps1
 ```
 
-- الشهادة يجب أن تكون **Code Signing** صادرة من CA موثوق (أو شهادة داخلية موزّعة مسبقًا).
-- للتحقق بعد البناء:
+السكربت يقرأ PFX وكلمة مروره، يضبط `CSC_LINK` و`CSC_KEY_PASSWORD`، يبني، ثم يطبع حالة التوقيع لكل EXE.
 
-```powershell
-Get-AuthenticodeSignature '.\dist-desktop\School-Attendance-Setup-3.6.0-x64.exe' |
-  Format-List Status, StatusMessage, SignerCertificate
-```
+**جعل الشهادة موثوقة على أجهزة المدرسة:**
 
-- `Status = Valid` يعني أن التوقيع سليم ومُوثوق على هذا الجهاز.
-- الشهادة الذاتية (Self-Signed) تُظهر التوقيع لكنها لا تمنع SmartScreen حتى تُثبَّت
-  في `Trusted Root` و`Trusted Publishers` على كل جهاز، وهي مناسبة للشبكة الداخلية فقط.
-- بلا شهادة، يبقى البناء غير موقّع؛ لا تُخزَّن الشهادة أو كلمة مرورها في Git.
+1. انسخ `school-attendance-codesign.cer` إلى الجهاز.
+2. افتح PowerShell **كمسؤول** على الجهاز:
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File tools\trust-internal-signing.ps1 -Scope LocalMachine
+   ```
+   أو للمستخدم الحالي فقط (بلا صلاحيات مدير):
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File tools\trust-internal-signing.ps1
+   ```
+3. تحقّق:
+   ```powershell
+   Get-AuthenticodeSignature '.\dist-desktop\School-Attendance-Setup-3.6.0-x64.exe' |
+     Format-List Status, StatusMessage, SignerCertificate
+   ```
+
+- `Status = Valid` يعني أن التوقيع سليم وموثوق على هذا الجهاز.
+- الشهادة الداخلية لا تمنح «سمعة» SmartScreen تلقائيًا؛ التثبيت في
+  `Trusted Root` و`Trusted Publishers` يزيل التحذير على الأجهزة التي ثُبِّتت عليها.
+- الأجهزة غير المثبَّتة عليها الشهادة ستُظهر تحذيرًا؛ ثبّت الشهادة أولًا، أو استخدم
+  شهادة CA موثوقة عامة.
+- لا تُخزَّن الشهادة أو كلمة مرورها في Git، ولا تُرسل PFX عبر البريد.
 
 هيكل مجلد البيانات:
 
@@ -282,7 +307,7 @@ npm.cmd --prefix desktop run import-students -- --file "E:\projects\بيانات
 
 | العَرَض | السبب المحتمل | المعالجة |
 |---|---|---|
-| SmartScreen يمنع التشغيل | التطبيق غير موقّع أو الشهادة غير موثوقة | More info ← Run anyway، أو وقّع بـPFX موثوق وأعد البناء |
+| SmartScreen يمنع التشغيل | الشهادة الداخلية غير مثبّتة على الجهاز | شغّل `tools\trust-internal-signing.ps1 -Scope LocalMachine` كمسؤول، أو More info ← Run anyway |
 | `SETUP_REQUIRED` | فتح `/api` قبل التهيئة | أكمل شاشة التهيئة أولًا |
 | لا يبدأ الخادم المحلي | المنافذ 43118–43120 مشغولة | أغلق النسخة الأخرى أو أعد تشغيل الجهاز |
 | لا يظهر أي جهاز في المزامنة | جدار الحماية يمنع UDP/HTTP | اسمح للتطبيق على الشبكة الخاصة، أو أضف الجهاز يدويًا |
