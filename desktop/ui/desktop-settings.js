@@ -236,7 +236,7 @@
     ]));
     if (stateInfo.lastError) nodes.push(alertBox('آخر خطأ: ' + stateInfo.lastError, 'warn'));
     if (stateInfo.lastArchiveMode === 'google-sheet' && stateInfo.lastArchiveNote) {
-      nodes.push(alertBox(stateInfo.lastArchiveNote, 'warn'));
+      nodes.push(alertBox('تم النسخ الاحتياطي بنجاح. ' + stateInfo.lastArchiveNote, 'info'));
     } else if (stateInfo.lastArchiveMode === 'drive-files') {
       nodes.push(alertBox('النسخة السحابية الأخيرة رُفعت كملفات JSON وXLSX إلى مجلد Drive، مع تحديث الجدول المقروء.', 'ok'));
     }
@@ -319,8 +319,8 @@
             if (!cloud) {
               summary += ' (سحابي غير مُهيأ)';
             } else if (cloud.archiveMode === 'google-sheet') {
-              summary += ' حُدّث الجدول المقروء وحُفظ أرشيف JSON داخل تبويب «JSON» في جدول Google؛ لا توجد مساحة Drive لرفع ملفات ثنائية. النسختان JSON وXLSX محفوظتان محليًا.';
-              kind = 'warn';
+              summary = 'اكتمل النسخ الاحتياطي بنجاح: حُدّث جدول Google المقروء، وحُفظ أرشيف JSON كامل داخل تبويب «JSON»، والنسختان JSON وXLSX محفوظتان على هذا الجهاز.';
+              kind = 'ok';
             } else {
               summary += ' رُفعت ملفات JSON وXLSX إلى مجلد Drive: ' + ((cloud.json && cloud.json.name) || '') + '.';
             }
@@ -350,9 +350,18 @@
             message.innerHTML = '';
             message.appendChild(alertBox(error.message, 'error'));
           }).finally(function () { node.disabled = false; });
+        }),
+        button('فتح مجلد النسخ المحلية', function () {
+          if (window.desktopSA.openBackups) window.desktopSA.openBackups();
+          else window.desktopSA.openDataFolder();
         })
       ]),
-      message
+      message,
+      el('p', {
+        className: 'hint',
+        dir: 'ltr',
+        text: (status.dataDir || '') + '\\backups\\exports'
+      })
     ]));
 
     if (state.backupTest && !state.backupTest.error) {

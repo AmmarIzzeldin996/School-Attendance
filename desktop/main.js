@@ -280,6 +280,11 @@ ipcMain.handle('desktop:open-external', (_event, url) => {
   return shell.openExternal(String(url)).then(() => true).catch(() => false);
 });
 ipcMain.handle('desktop:open-data-folder', () => shell.openPath(dataDir).then(() => true).catch(() => false));
+ipcMain.handle('desktop:open-backups', () => {
+  const dir = path.join(dataDir, 'backups', 'exports');
+  try { fs.mkdirSync(dir, { recursive: true }); } catch (ignored) { /* يعرض المجلد الأب */ }
+  return shell.openPath(dir).then(() => true).catch(() => false);
+});
 ipcMain.handle('desktop:quit', () => { app.quit(); return true; });
 
 // استعادة كلمة مرور المشرف من شاشة الدخول: تتطلب تأكيدًا في نافذة أصلية،

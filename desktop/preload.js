@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('desktopSA', {
   onStatusChanged: (callback) => on('desktop:status-changed', callback),
   openExternal: (url) => ipcRenderer.invoke('desktop:open-external', String(url || '')),
   openDataFolder: () => ipcRenderer.invoke('desktop:open-data-folder'),
+  openBackups: () => ipcRenderer.invoke('desktop:open-backups'),
   recoverAdmin: () => ipcRenderer.invoke('desktop:recover-admin'),
   quit: () => ipcRenderer.invoke('desktop:quit')
 });
