@@ -57,7 +57,16 @@
 
   function alertBox(message, type) {
     if (!message) return null;
-    return el('div', { className: 'alert ' + (type || 'warn'), text: message });
+    var kind = type || 'warn';
+    var node = el('div', { className: 'alert ' + kind }, [el('span', { text: message })]);
+    node.appendChild(el('button', {
+      type: 'button', className: 'alert-close', 'aria-label': 'إغلاق', text: '×',
+      onClick: function () { if (node.parentNode) node.parentNode.removeChild(node); }
+    }));
+    var timer = setTimeout(function () { if (node.parentNode) node.parentNode.removeChild(node); },
+      kind === 'error' ? 12000 : 8000);
+    node.addEventListener('mouseenter', function () { clearTimeout(timer); });
+    return node;
   }
 
   function section(title, subtitle, nodes) {
@@ -562,6 +571,16 @@
     if (!box) return;
     box.className = message ? ('alert ' + (type || 'warn')) : 'alert hidden';
     box.textContent = message || '';
+    if (message && type === 'error') {
+      var token = (box.dataset.dsToken || 0) + 1;
+      box.dataset.dsToken = String(token);
+      setTimeout(function () {
+        if (box.dataset.dsToken === String(token) && box.textContent === message) {
+          box.className = 'alert hidden';
+          box.textContent = '';
+        }
+      }, 12000);
+    }
   }
 
   // يظهر في تطبيق سطح المكتب فقط: استعادة كلمة مرور المشرف دون الحاجة إلى
@@ -573,6 +592,7 @@
       type: 'button',
       id: 'desktopRecoverBtn',
       className: 'btn ghost block',
+      title: 'يتطلب موافقة مسؤول Windows على هذا الجهاز',
       text: 'نسيت كلمة مرور المشرف؟'
     });
     btn.addEventListener('click', function () {

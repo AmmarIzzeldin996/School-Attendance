@@ -10,6 +10,7 @@ const { Secrets } = require('./lib/secrets');
 const { SyncEngine } = require('./sync/engine');
 const { Discovery } = require('./sync/discovery');
 const { BackupManager } = require('./backup/manager');
+const { requestApproval } = require('./lib/elevation');
 const { AppServer } = require('./server');
 
 const APP_ID = 'sa.school.attendance.desktop';
@@ -287,8 +288,10 @@ ipcMain.handle('desktop:open-backups', () => {
 });
 ipcMain.handle('desktop:quit', () => { app.quit(); return true; });
 
-// استعادة كلمة مرور المشرف من شاشة الدخول: تتطلب تأكيدًا في نافذة أصلية،
-// ثم تُصدر كلمة مرور مؤقتة تُعرض مرة واحدة وتُلزم بتغييرها عند الدخول.
+// استعادة كلمة مرور المشرف من شاشة الدخول:
+// 1) تأكيد في نافذة Electron أصلية.
+// 2) موافقة مسؤول Windows عبر UAC — لا يستطيع مستخدم عادي إتمامها.
+// 3) كلمة مرور مؤقتة تُعرض مرة واحدة وتُلزم بتغييرها عند الدخول.
 ipcMain.handle('desktop:recover-admin', async () => {
   if (!runtime || !runtime.installed) {
     return { error: 'لم يُجهَّز النظام بعد. أكمل الإعداد الأول.' };
@@ -297,9 +300,11 @@ ipcMain.handle('desktop:recover-admin', async () => {
     type: 'warning',
     title: 'إعادة تعيين كلمة مرور المشرف',
     message: 'إعادة تعيين كلمة مرور المشرف',
-    detail: 'ستُلغى الجلسات النشطة، وستحصل على كلمة مرور مؤقتة تظهر مرة واحدة فقط. ' +
-      'استخدمها للدخول ثم غيّرها فورًا. لا تُنفّذ هذا الإجراء إلا إذا كنت مالك الجهاز.',
-    buttons: ['إلغاء', 'إعادة التعيين'],
+    detail: 'سيُطلب منك تأكيد صلاحيات مسؤول Windows (UAC). ' +
+      'إن لم تكن مسؤولًا على هذا الجهاز فلن تكتمل العملية. ' +
+      'بعد الموافقة ستُلغى الجلسات النشطة وتظهر كلمة مرور مؤقتة مرة واحدة فقط، ' +
+      'ويُطلب تغييرها عند أول دخول.',
+    buttons: ['إلغاء', 'متابعة'],
     defaultId: 0,
     cancelId: 0,
     noLink: true
@@ -308,6 +313,20 @@ ipcMain.handle('desktop:recover-admin', async () => {
     ? await dialog.showMessageBox(window, options)
     : await dialog.showMessageBox(options);
   if (answer.response !== 1) return { cancelled: true };
+
+  const approval = await requestApproval({ logger });
+  if (!approval.ok) {
+    if (approval.reason === 'cancelled') {
+      logger.warn('admin_password_recovery_uac_cancelled', {});
+      return { error: 'أُلغيت موافقة مسؤول Windows. لم تُغيَّر كلمة المرور.' };
+    }
+    const message = approval.reason === 'timeout'
+      ? 'انتهت مهلة انتظار موافقة مسؤول Windows. لم تُغيَّر كلمة المرور.'
+      : 'تعذر التحقق من صلاحية مسؤول Windows. يجب تشغيل الجهاز بحساب مسؤول وإتمام نافذة UAC.';
+    logger.warn('admin_password_recovery_blocked', { reason: approval.reason });
+    return { error: message };
+  }
+
   try {
     const result = await runtime.recoverAdmin();
     if (!result || result.error) return { error: (result && result.error) || 'تعذر إعادة التعيين.' };

@@ -331,6 +331,7 @@ function saveUser_(ctx, payload) {
   if (hash) {
     account.passwordHash = hash;
     account.mustChange = true;
+    account.passwordChangedAt = '';
     account.failed = 0;
     account.lockedUntil = 0;
   }
@@ -358,6 +359,7 @@ function initializeAccounts_() {
   account.role = 'admin';
   account.active = true;
   account.mustChange = true;
+  account.passwordChangedAt = '';
   account.failed = 0;
   account.lockedUntil = 0;
   account.version = Number(account.version || 0) + 1;
@@ -377,6 +379,7 @@ function recoverSupervisorPassword_() {
   var temporary = 'Aa!' + randomToken_().replace(/[^A-Za-z0-9]/g, '').slice(0, 16);
   account.passwordHash = passwordHash_(temporary);
   account.mustChange = true;
+  account.passwordChangedAt = '';
   account.active = true;
   account.role = 'admin';
   account.version = Number(account.version || 0) + 1;

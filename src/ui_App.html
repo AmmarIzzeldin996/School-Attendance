@@ -121,7 +121,21 @@ window.SA = window.SA || {};
       h('div', { className: 'stat-label', text: label })
     ]);
   }
-  function alertBox(message, type) { return h('div', { className: 'alert ' + (type || ''), role: 'alert', text: message }); }
+  function alertBox(message, type) {
+    var kind = type || 'info';
+    var node = h('div', { className: 'alert ' + kind, role: kind === 'error' ? 'alert' : 'status' }, [h('span', { text: message })]);
+    node.appendChild(h('button', {
+      className: 'alert-close', type: 'button', 'aria-label': 'إغلاق', text: '×',
+      onClick: function () { if (node.parentNode) node.parentNode.removeChild(node); }
+    }));
+    var timer = setTimeout(function () { if (node.parentNode) node.parentNode.removeChild(node); },
+      kind === 'error' ? 12000 : kind === 'warn' ? 9000 : 6000);
+    node.addEventListener('mouseenter', function () { clearTimeout(timer); });
+    node.addEventListener('mouseleave', function () {
+      timer = setTimeout(function () { if (node.parentNode) node.parentNode.removeChild(node); }, 3500);
+    });
+    return node;
+  }
   function loadingRow(text) { return h('div', { className: 'loading-row' }, [h('span', { className: 'spinner', 'aria-hidden': 'true' }), h('span', { text: text || 'جارٍ التحميل…' })]); }
   function pageHead(title, subtitle, actions) {
     return h('div', { className: 'page-head' }, [
@@ -356,12 +370,20 @@ window.SA = window.SA || {};
   }
 
   /* ---------- الدخول ---------- */
+  var loginAlertTimer = null;
   function setLoginAlert(message, type) {
     var box = $('loginAlert');
     if (!box) return;
+    if (loginAlertTimer) { clearTimeout(loginAlertTimer); loginAlertTimer = null; }
     if (!message) { box.className = 'alert hidden'; box.textContent = ''; return; }
     box.className = 'alert ' + (type || 'error');
     box.textContent = message;
+    loginAlertTimer = setTimeout(function () {
+      if (!box) return;
+      box.className = 'alert hidden';
+      box.textContent = '';
+      loginAlertTimer = null;
+    }, type === 'error' ? 12000 : 8000);
   }
   function applyBranding() {
     var cfg = state.config || {};
@@ -374,14 +396,14 @@ window.SA = window.SA || {};
     if ($('loginVersion')) $('loginVersion').textContent = cfg.version ? 'الإصدار ' + cfg.version : '';
     if ($('loginGoogle')) $('loginGoogle').classList.toggle('hidden', !cfg.ssoAvailable);
   }
-  function showLogin(message) {
+  function showLogin(message, type) {
     clearToken();
     state.user = null;
     closeAllModals();
     hide($('bootScreen'));
     hide($('appShell'));
     show($('loginScreen'));
-    setLoginAlert(message || '', message ? 'error' : null);
+    setLoginAlert(message || '', message ? (type || 'error') : null);
     if (!message && $('loginUsername')) { try { $('loginUsername').focus(); } catch (ignored) { /* تجاهل */ } }
   }
   function enterApp(data, token) {
@@ -465,7 +487,7 @@ window.SA = window.SA || {};
       api('changePassword', { currentPassword: current.value, newPassword: next.value }).then(function () {
         toast('تم تغيير كلمة المرور. سجّل الدخول من جديد.', 'success');
         modal.close();
-        showLogin('تم تغيير كلمة المرور. سجّل الدخول بكلمة المرور الجديدة.');
+        showLogin('تم تغيير كلمة المرور. سجّل الدخول بكلمة المرور الجديدة.', 'success');
       }).catch(function (error) {
         setBusy(save, false);
         showError(error);
@@ -484,10 +506,10 @@ window.SA = window.SA || {};
   }
   function logout() {
     api('logout', {}).then(function () {
-      showLogin('تم تسجيل الخروج بنجاح.');
+      showLogin('تم تسجيل الخروج بنجاح.', 'success');
     }).catch(function (error) {
       if (error.code !== 'SESSION_EXPIRED') toast('تعذر إبلاغ الخادم بالخروج، لكن تم مسح الجلسة من هذا الجهاز.', 'warn');
-      showLogin('تم تسجيل الخروج.');
+      showLogin('تم تسجيل الخروج.', 'success');
     });
   }
   function refreshBootstrap() {

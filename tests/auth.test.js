@@ -33,6 +33,56 @@ describe('authentication', () => {
     expect(fresh.user.permissions).toContain('settings');
   });
 
+  it('does not force a password change after the first successful change', () => {
+    const app = createApp();
+    const installed = install(app);
+
+    const first = login(app, installed.account.username, installed.account.temporaryPassword);
+    okAs(app, first.token, 'changePassword', {
+      currentPassword: installed.account.temporaryPassword,
+      newPassword: 'Once!2026pass'
+    });
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      expect(login(app, installed.account.username, 'Once!2026pass').user.mustChange).toBe(false);
+    }
+
+    const adminToken = login(app, installed.account.username, 'Once!2026pass').token;
+    const created = okAs(app, adminToken, 'saveUser', {
+      username: 'once_user', name: 'مستخدم مرة واحدة', email: 'once_user@example.com',
+      role: 'gate', active: true, password: 'Temp!2026x'
+    });
+    const user = created.user;
+    const temporary = login(app, 'once_user', 'Temp!2026x');
+    expect(temporary.user.mustChange).toBe(true);
+    okAs(app, temporary.token, 'changePassword', {
+      currentPassword: 'Temp!2026x',
+      newPassword: 'User!2026x'
+    });
+    expect(login(app, 'once_user', 'User!2026x').user.mustChange).toBe(false);
+
+    // راية قديمة عالقة في البيانات المتزامنة لا تعيد فرض التغيير بعد أن غيّر المستخدم كلمته.
+    const accountKey = Array.from(app.props.keys()).find((key) => {
+      if (!key.startsWith('ACCOUNT_')) return false;
+      return JSON.parse(app.props.get(key)).username === 'once_user';
+    });
+    const stale = JSON.parse(app.props.get(accountKey));
+    stale.mustChange = true;
+    app.props.set(accountKey, JSON.stringify(stale));
+    expect(login(app, 'once_user', 'User!2026x').user.mustChange).toBe(false);
+
+    // إعادة تعيين من المشرف تجعل كلمة المرور مؤقتة مجددًا (مرة واحدة).
+    okAs(app, adminToken, 'saveUser', {
+      id: user.id,
+      username: 'once_user',
+      name: user.name,
+      email: user.email,
+      role: 'gate',
+      active: true,
+      password: 'Temp!2026y'
+    });
+    expect(login(app, 'once_user', 'Temp!2026y').user.mustChange).toBe(true);
+  });
+
   it('uses one opaque error for unknown users and wrong passwords', () => {
     const app = setup();
     const unknown = failAs(app, '', 'login', { username: 'nobody', password: 'Whatever!1' });

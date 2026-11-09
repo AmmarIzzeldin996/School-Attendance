@@ -192,7 +192,7 @@ function publicAccount_(account) {
     role: account.role,
     roleLabel: ROLE_LABELS_[account.role] || 'دور غير معروف',
     active: !!account.active,
-    mustChange: !!account.mustChange,
+    mustChange: !!account.mustChange && !account.passwordChangedAt,
     permissions: permissionsFor_(account),
     isOwner: isPrimaryAdmin_(account)
   };
