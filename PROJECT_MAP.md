@@ -354,7 +354,7 @@ runNow
 
 ## [DEPLOYMENT]
 
-الخطوات الكاملة في `docs/OPERATIONS.md`، وملخص التسليم والمخرجات في `docs/DELIVERY.md`، وتدقيق الأمان قبل الإطلاق في `docs/SECURITY_AUDIT.md`. الملخص:
+الخطوات الكاملة في `docs/OPERATIONS.md`، وملخص التسليم والمخرجات في `docs/DELIVERY.md`، وتدقيق الأمان قبل الإطلاق في `docs/SECURITY_AUDIT.md`. دليل المستخدم النهائي في `docs/guide/دليل-الاستخدام-3.6.0.pdf` (مصدره `docs/guide/guide.html` وصوره في `docs/guide/img/`). الملخص:
 
 ### Apps Script
 
