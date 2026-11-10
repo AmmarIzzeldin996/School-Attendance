@@ -63,6 +63,14 @@ describe('desktop packaging', () => {
     });
   });
 
+  it('keeps the scanner capture input out of the document scroll area', () => {
+    const css = fs.readFileSync(path.resolve(desktop, '../src/ui_Styles.html'), 'utf8');
+    const rule = /\.scan-capture\s*\{([^}]*)\}/.exec(css);
+    expect(rule).toBeTruthy();
+    expect(rule[1]).toMatch(/position:\s*fixed/);
+    expect(rule[1]).not.toMatch(/left:\s*-/);
+  });
+
   it('keeps code signing optional and targets x64 Windows', () => {
     expect(pkg.build.forceCodeSigning).toBe(false);
     const targets = (pkg.build.win.target || []).map((entry) => entry.target);
