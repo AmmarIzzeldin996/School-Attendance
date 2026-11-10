@@ -178,6 +178,23 @@ class Runtime {
     return sandbox[name]();
   }
 
+  // يتحقق من رمز جلسة واجهة الإدارة ويُرجع الحساب العام (بالصلاحيات) أو null.
+  // يُستخدم لحماية مسارات /desktop/* من أي طلب محلي غير مُصادق.
+  resolveSession(token) {
+    if (!this.installed) return null;
+    const raw = String(token || '');
+    if (!/^[A-Za-z0-9_-]{20,100}$/.test(raw)) return null;
+    try {
+      const sandbox = this.loadContext();
+      const account = sandbox.sessionAccount_(raw);
+      if (!account || !account.active) return null;
+      return sandbox.publicAccount_(account);
+    } catch (error) {
+      this.logger.warn('session_resolve_failed', { message: error && error.message });
+      return null;
+    }
+  }
+
   install(options) {
     return this.mutex.run(() => {
       if (this.installed) {

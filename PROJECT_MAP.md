@@ -129,8 +129,9 @@ Electron main
 ### 7) المزامنة بين الأجهزة
 
 ```
-UDP discovery (deviceId + منفذ + مفتاح المزامنة)
-  → قائمة أقران على شبكة المدرسة
+UDP discovery (deviceId + منفذ + اسم الجهاز)
+  → قائمة أقران على شبكة المدرسة (بدون مفاتيح)
+  → مزاوجة يدوية: المشرف ينسخ مفتاح الجهاز الآخر ويدخله في «إضافة جهاز»
   → GET /sync/changes?since=<cursor> مع x-sync-key
   → applyOps: HLC آخر-كاتب-يفوز للصفوف
   → دمج حقول الحضور (inAt/outAt) وبنود الرحلات (items)
@@ -138,7 +139,8 @@ UDP discovery (deviceId + منفذ + مفتاح المزامنة)
 ```
 
 - كل جهاز مستقل تمامًا، ويتبادل العمليات عند توفر الشبكة؛ لا يوجد خادم مركزي.
-- جهاز جديد: `/setup/join` يستدعي `/desktop/clone` ويستنسخ `workbook` و`properties`.
+- الاكتشاف لا ينقل مفتاح المزامنة؛ الأقران بلا مفتاح يظهرون «بانتظار مفتاح المزامنة» حتى يزوّدهم المشرف.
+- جهاز جديد: `/setup/join` يستدعي `/desktop/clone` (محمي بمفتاح المزامنة) ويستنسخ `workbook` و`properties`.
 - المزامنة لا تعتمد على الساعة وحدها: HLC مع حد انحراف ودمج حتمي.
 
 ### 8) النسخ الاحتياطي السحابي
@@ -189,23 +191,23 @@ runNow
 | الملف | المسؤولية | لا يفعل |
 |---|---|---|
 | `main.js` | دورة حياة Electron، النافذة، المؤقتات، IPC | منطق أعمال |
-| `server.js` | خادم HTTP محلي: الإعداد، API، المزامنة، النسخ | تعديل القاعدة مباشرة |
+| `server.js` | خادم HTTP محلي: الإعداد، API، المزامنة، النسخ؛ يفرض Host/Origin محليًا وجلسة مشرف على `/desktop/*` | تعديل القاعدة مباشرة |
 | `preload.js` | جسر IPC محدود للواجهة | كشف Node للـrenderer |
-| `vm/runtime.js` | تحميل `.gs` في VM، install/join، API، صيانة | شبكة |
+| `vm/runtime.js` | تحميل `.gs` في VM، install/join، API، صيانة، `resolveSession` لمسارات الإدارة | شبكة |
 | `vm/services.js` | محاكاة SpreadsheetApp/PropertiesService/DriveApp/LockService | منطق أعمال |
 | `data/store.js` | مخزن محلي، كتابة ذرية، التقاط تغييرات الصفوف | مزامنة |
 | `sync/model.js` | تعريف الجداول، مفاتيح الصفوف، التطبيع | نقل |
 | `sync/journal.js` | سجل `ops.jsonl` ومؤشرات الاستلام والتقليم | تطبيق |
 | `sync/engine.js` | توليد العمليات، مزامنة الأقران، الحالة | واجهة |
 | `sync/apply.js` | تطبيق العمليات، دمج الحقول/العناصر، الحذف | قراءة الملفات |
-| `sync/discovery.js` | اكتشاف UDP للأقران على LAN | مزامنة سحابية |
+| `sync/discovery.js` | اكتشاف UDP للأقران على LAN (بدون مفاتيح) | مزامنة سحابية أو بث أسرار |
 | `backup/google.js` | OAuth حساب الخدمة، Sheets/Drive، أرشيف JSON | تشغيل النظام |
 | `backup/workbook.js` | استيراد الطلاب، تبويبات مقروءة، XLSX | تعديل القاعدة |
 | `backup/manager.js` | نسخ محلي/سحابي، استعادة، جدولة، تقليم | واجهة |
 | `lib/elevation.js` | بوابة موافقة مسؤول Windows (UAC) لاستعادة كلمة المرور: nonce وملف موافقة محمي | تعديل القاعدة |
 | `ui/setup.html` | تهيئة جهاز أو الانضمام إلى جهاز آخر | واجهة GAS |
 | `ui/bridge.js` | جسر IPC الآمن للواجهة | منطق |
-| `ui/desktop-settings.js` | لوحة المزامنة والنسخ والاستيراد ومعلومات الجهاز | منطق خادم |
+| `ui/desktop-settings.js` | لوحة المزامنة والنسخ والاستيراد ومعلومات الجهاز (للمشرف فقط) | منطق خادم |
 | `tools/import-students.js` | استيراد دفعات من Excel/CSV دون سجلات حضور | حضور |
 | `tools/make-icon.js` | توليد أيقونة التطبيق | — |
 
@@ -227,7 +229,7 @@ runNow
 | 8 | إنهاء حضور اليوم | `ui_Home` | `closeDay` | `attendance` |
 | 9 | إدارة الطلاب | `ui_Students` | `getStudents`, `saveStudent` | `attendance` |
 | 10 | استيراد طلاب | `ui_Students` | `importStudents` | `attendance` |
-| 11 | إصدار بطاقة طالب | `ui_Students` | `issueCard` | `cards` |
+| 11 | إصدار بطاقة طالب (طباعة 6×6 سم) | `ui_Students` | `issueCard` | `cards` |
 | 12 | عرض/إلغاء البطاقات | `ui_Students` | `getCards`, `revokeCard` | `cards` |
 | 13 | إدارة السائقين وربط الطلاب | `ui_Trips` | `getDriverAdminData`, `saveDriver`, `deleteDriver` | `trips` |
 | 14 | بطاقة سائق | `ui_Trips` | `issueCard('DRIVER')` | `cards`, `trips` |
@@ -257,6 +259,7 @@ runNow
 | 38 | نسخة سحابية مقروءة | لوحة سطح المكتب | `/desktop/backup/test`, `/desktop/backup/run` | `desktop/backup` |
 | 39 | استعادة أحدث نسخة سحابية | لوحة سطح المكتب | `/desktop/backup/import-latest` | `desktop/backup` |
 | 40 | معلومات الجهاز وتنزيل القاعدة | لوحة سطح المكتب | `/desktop/status`, `/desktop/database` | `desktop/server` |
+| 41 | بطاقة مستخدم النظام وطباعتها 6×6 سم | `ui_Settings` | `issueCard('USER')` | `cards` |
 | 41 | استعادة كلمة مرور المشرف (بتأكيد UAC) | شاشة الدخول | IPC `desktop:recover-admin` | `desktop/main`, `desktop/lib/elevation`, `desktop/ui` |
 
 ---
@@ -351,7 +354,7 @@ runNow
 
 ## [DEPLOYMENT]
 
-الخطوات الكاملة في `docs/OPERATIONS.md`، وملخص التسليم والمخرجات في `docs/DELIVERY.md`. الملخص:
+الخطوات الكاملة في `docs/OPERATIONS.md`، وملخص التسليم والمخرجات في `docs/DELIVERY.md`، وتدقيق الأمان قبل الإطلاق في `docs/SECURITY_AUDIT.md`. الملخص:
 
 ### Apps Script
 
@@ -423,4 +426,4 @@ runNow
 - استعادة كلمة مرور المشرف من شاشة الدخول بعد تأكيد أصلي وموافقة مسؤول Windows (UAC)، بكلمة مؤقتة تُعرض مرة واحدة.
 - تغيير كلمة المرور إلزامي عند أول دخول فقط؛ بعد التغيير لا تتكرر المطالبة، وإعادة تعيين المشرف وحدها تجعلها مؤقتة مجددًا.
 - خط الواجهة Times New Roman، ورسائل التنبيه/التحذير/التعبئة تُغلق تلقائيًا أو بزر ×.
-- 50 اختبار سطح مكتب إضافي (إجمالي 124)، بما فيها بوابة UAC وتقارب ثلاثة أجهزة وفحص حزمة يمنع نقص وحدات وقت التشغيل وأخطاء تحليل السكربتات.
+- 56 اختبار سطح مكتب إضافي (إجمالي 130)، بما فيها بوابة UAC وتقارب ثلاثة أجهزة وفحص حزمة يمنع نقص وحدات وقت التشغيل وأخطاء تحليل السكربتات، واختبارات أمان المسارات والرؤوس وSSRF والرفع.

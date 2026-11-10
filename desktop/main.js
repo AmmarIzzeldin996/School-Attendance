@@ -203,7 +203,6 @@ async function boot() {
     deviceId: engine.deviceId,
     name: engine.deviceName,
     port: PREFERRED_PORT,
-    key: engine.key,
     logger,
     onPeer: (peer) => {
       engine.observePeer(peer);

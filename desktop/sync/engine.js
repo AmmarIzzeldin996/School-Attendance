@@ -78,6 +78,7 @@ class SyncEngine {
         name: peer.name || peer.url,
         url: peer.url,
         manual: !!peer.manual,
+        needsKey: !peer.key,
         cursor: Number(peer.cursor) || 0,
         lastAt: peer.lastAt || '',
         lastError: peer.lastError || '',
@@ -154,17 +155,16 @@ class SyncEngine {
     if (existing && existing.disabled) return;
     const url = cleanUrl(info.url);
     if (!/^https?:\/\/[^\s]+$/i.test(url)) return;
-    const key = String(info.key || '');
     if (existing) {
       if (existing.url !== url) existing.url = url;
-      if (key) existing.key = key;
       if (info.name) existing.name = info.name;
       return;
     }
+    // الاكتشاف لا ينقل مفتاح المزامنة؛ يبقى فارغًا حتى يزوّده المشرف يدويًا.
     this.state.peers[info.deviceId] = {
       id: info.deviceId,
       url,
-      key,
+      key: '',
       name: info.name || info.deviceId,
       manual: false,
       cursor: 0,
@@ -250,6 +250,12 @@ class SyncEngine {
   }
 
   async syncPeer(peer) {
+    if (!String(peer.key || '').trim()) {
+      peer.lastError = 'بانتظار مفتاح المزامنة';
+      peer.lastAt = new Date().toISOString();
+      this.saveState();
+      return { ok: false, error: peer.lastError, applied: 0, batches: 0 };
+    }
     const started = Date.now();
     let cursor = Number(peer.cursor) || 0;
     let applied = 0;

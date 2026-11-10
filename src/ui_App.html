@@ -276,7 +276,7 @@ window.SA = window.SA || {};
     options = options || {};
     return new Promise(function (resolve) {
       var modal;
-      function done(value) { modal.close(); resolve(value); }
+      function done(value) { resolve(value); modal.close(); }
       modal = openModal(options.title || 'تأكيد العملية', [h('p', { text: message })], [
         h('button', { className: 'btn', type: 'button', onClick: function () { done(false); }, text: 'إلغاء' }),
         h('button', { className: 'btn ' + (options.danger ? 'danger' : 'primary'), type: 'button', onClick: function () { done(true); }, text: label || 'تأكيد' })
@@ -573,6 +573,25 @@ window.SA = window.SA || {};
       return result;
     });
   }
+  function cardPrintNode(result, imageSrc) {
+    var owner = String((result.card && result.card.ownerName) || '').trim();
+    var name = owner;
+    var detail = '';
+    if (result.card && result.card.type === 'STUDENT') {
+      var parts = owner.split(' — ');
+      name = parts[0] || owner;
+      detail = parts.slice(1).join(' — ');
+    } else if (result.card && result.card.type === 'DRIVER') {
+      detail = 'سائق';
+    } else if (result.card && result.card.type === 'USER') {
+      detail = 'مستخدم النظام';
+    }
+    return h('div', { className: 'print-card' }, [
+      h('div', { className: 'print-card-name', text: name || '—' }),
+      detail ? h('div', { className: 'print-card-sub', text: detail }) : null,
+      imageSrc ? h('img', { className: 'print-card-qr', alt: 'رمز البطاقة', src: imageSrc }) : null
+    ]);
+  }
   function showCardToken(result) {
     var qr = null;
     try {
@@ -580,7 +599,11 @@ window.SA = window.SA || {};
       qr.addData(result.token);
       qr.make();
     } catch (error) { qr = null; }
-    var image = h('img', { alt: 'رمز QR للبطاقة', src: qr ? qr.createDataURL(6, 4) : '' });
+    var imageSrc = qr ? qr.createDataURL(6, 4) : '';
+    var preview = cardPrintNode(result, imageSrc);
+    preview.classList.add('card-preview');
+    var printHost = h('div', { id: 'printCardHost', className: 'print-card-host' }, [cardPrintNode(result, imageSrc)]);
+    document.body.appendChild(printHost);
     var tokenInput = h('input', { type: 'text', readOnly: true, dir: 'ltr', className: 'mono', value: result.token });
     var modal;
     var copy = h('button', {
@@ -589,15 +612,28 @@ window.SA = window.SA || {};
         catch (ignored) { toast('انسخ الرمز يدويًا.', 'warn'); }
       }
     });
-    var print = h('button', { className: 'btn', type: 'button', text: 'طباعة', onClick: function () { window.print(); } });
+    var print = h('button', {
+      className: 'btn', type: 'button', text: 'طباعة البطاقة', onClick: function () {
+        document.body.classList.add('printing-card');
+        var done = function () {
+          document.body.classList.remove('printing-card');
+          window.removeEventListener('afterprint', done);
+        };
+        window.addEventListener('afterprint', done);
+        setTimeout(done, 1500);
+        try { window.print(); } catch (error) { done(); toast('تعذر فتح نافذة الطباعة.', 'error'); }
+      }
+    });
     var close = h('button', { className: 'btn primary', type: 'button', text: 'تم', onClick: function () { modal.close(); } });
     modal = openModal('بطاقة ' + cardTypeLabel(result.card.type) + ' — ' + (result.card.ownerName || result.card.ownerId), h('div', { className: 'qr-box' }, [
-      image,
-      h('div', { className: 'qr-token', text: result.token }),
+      preview,
       tokenInput,
       h('div', { className: 'guard-note', text: 'هذا الرمز يظهر مرة واحدة فقط. اطبعه أو احفظه الآن؛ لا يمكن استرجاعه لاحقًا. عند فقدانه أصدر بطاقة بديلة تُلغي السابقة.' }),
       result.revoked ? h('div', { className: 'alert warn', text: 'تم إلغاء ' + result.revoked + ' بطاقة نشطة سابقة لهذا الصاحب.' }) : null
-    ]), [copy, print, close], { narrow: true });
+    ]), [copy, print, close], {
+      narrow: true,
+      onClose: function () { if (printHost.parentNode) printHost.parentNode.removeChild(printHost); }
+    });
   }
   function decodeImage(image, onResult) {
     try {

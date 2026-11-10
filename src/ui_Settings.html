@@ -218,7 +218,14 @@
       {
         label: 'إجراء',
         value: function (row) {
-          return h('button', { className: 'btn sm', type: 'button', text: 'تعديل', onClick: function () { openUserForm(row); } });
+          return h('div', { className: 'btn-row' }, [
+            h('button', { className: 'btn sm', type: 'button', text: 'تعديل', onClick: function () { openUserForm(row); } }),
+            can('cards') ? h('button', {
+              className: 'btn sm ghost', type: 'button', text: 'بطاقة',
+              title: 'إصدار بطاقة دخول وطباعتها لهذا المستخدم',
+              onClick: function () { ui.issueCardFor('USER', row.id).catch(showError); }
+            }) : null
+          ]);
         }
       }
     ];

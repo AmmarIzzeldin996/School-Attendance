@@ -31,7 +31,10 @@
   }
 
   function request(path, options) {
+    var token = '';
+    try { token = sessionStorage.getItem('sa36.session') || ''; } catch (ignored) { token = ''; }
     var init = Object.assign({ headers: { accept: 'application/json' } }, options || {});
+    init.headers['x-session-token'] = token;
     if (init.body && typeof init.body !== 'string') {
       init.headers['content-type'] = 'application/json';
       init.body = JSON.stringify(init.body);
@@ -41,7 +44,9 @@
         var data = null;
         try { data = text ? JSON.parse(text) : null; } catch (error) { data = null; }
         if (!response.ok) {
-          throw new Error((data && (data.error || data.message)) || ('تعذر تنفيذ الطلب (' + response.status + ')'));
+          var message = (data && (data.error || data.message)) || ('تعذر تنفيذ الطلب (' + response.status + ')');
+          if (response.status === 401 || response.status === 403) message = 'يلزم تسجيل دخول المشرف لفتح لوحة سطح المكتب.';
+          throw new Error(message);
         }
         return data;
       });
@@ -130,7 +135,7 @@
 
     var keyInput = input(sync.key || '', { readOnly: 'readonly', dir: 'ltr', className: 'ds-code' });
     var keyCopy = button('نسخ', function (node) { copyText(sync.key, node); }, 'sm');
-    nodes.push(section('مفتاح المزامنة', 'يُشارك تلقائيًا مع الأجهزة المكتشفة. لا تُرسله خارج شبكة المدرسة.', [
+    nodes.push(section('مفتاح المزامنة', 'لا يُبثّ عبر الشبكة. انسخه وأدخله يدويًا على الجهاز الآخر من «إضافة جهاز». لا تُرسله خارج شبكة المدرسة.', [
       el('div', { className: 'ds-inline' }, [keyInput, keyCopy])
     ]));
 
@@ -174,7 +179,7 @@
         el('td', {}, [el('strong', { text: peer.name || peer.url }), el('div', { className: 'hint', dir: 'ltr', text: peer.url })]),
         el('td', {}, [el('span', {
           className: 'hint',
-          text: peer.lastError ? 'خطأ: ' + peer.lastError : 'آخر مزامنة: ' + when(peer.lastAt)
+          text: peer.needsKey ? 'بانتظار مفتاح المزامنة' : (peer.lastError ? 'خطأ: ' + peer.lastError : 'آخر مزامنة: ' + when(peer.lastAt))
         })]),
         el('td', {}, [button('حذف', function (node) {
           node.disabled = true;
@@ -560,7 +565,14 @@
 
   function injectEntry() {
     var actions = document.querySelector('.topbar-actions');
-    if (!actions || document.getElementById('desktopPanelBtn')) return;
+    var existing = document.getElementById('desktopPanelBtn');
+    var user = ui.state && ui.state.user;
+    // لوحة سطح المكتب (المزامنة/النسخ/الاستيراد) للمشرف فقط.
+    if (!user || user.role !== 'admin') {
+      if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+      return;
+    }
+    if (!actions || existing) return;
     var btn = el('button', { type: 'button', id: 'desktopPanelBtn', className: 'btn ghost sm desktop-entry', text: 'سطح المكتب', title: 'المزامنة والنسخ الاحتياطي' });
     btn.addEventListener('click', openPanel);
     actions.insertBefore(btn, actions.firstChild);

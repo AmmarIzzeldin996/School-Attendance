@@ -36,13 +36,14 @@ class Discovery {
   }
 
   message() {
+    // لا يُبثّ مفتاح المزامنة إطلاقًا؛ الاكتشاف يعرض العنوان والاسم فقط
+    // وتتم المزاوجة بمفتاح يُدخله المشرف يدويًا.
     return JSON.stringify({
       app: 'sa36',
       v: 1,
       deviceId: this.deviceId,
       name: this.name,
-      port: this.port,
-      key: this.key
+      port: this.port
     });
   }
 
@@ -65,7 +66,6 @@ class Discovery {
       this.onPeer({
         deviceId: String(payload.deviceId).slice(0, 64),
         name: String(payload.name || '').slice(0, 80),
-        key: String(payload.key || ''),
         url: 'http://' + remote.address + ':' + port
       });
     });

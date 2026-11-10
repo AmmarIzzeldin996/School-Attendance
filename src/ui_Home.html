@@ -46,11 +46,39 @@
     ];
   }
 
+  // قارئ الباركود يعمل كلوحة مفاتيح؛ عند وجود تخطيط عربي في Windows تتحول
+  // الحروف اللاتينية إلى عربية. نقرأ event.code (الموضع الفيزيائي) ونعيد بناء
+  // النص بتخطيط US حتى يصل رمز البطاقة صحيحًا مهما كان تخطيط لوحة المفاتيح.
+  var SCAN_SHIFT_DIGITS_ = ')!@#$%^&*(';
+  function scanKeyChar(event) {
+    var code = event.code || '';
+    if (event.ctrlKey || event.altKey || event.metaKey) return null;
+    var digit = /^Digit([0-9])$/.exec(code);
+    if (digit) return event.shiftKey ? SCAN_SHIFT_DIGITS_.charAt(Number(digit[1])) : digit[1];
+    var numpad = /^Numpad([0-9])$/.exec(code);
+    if (numpad) return numpad[1];
+    var letter = /^Key([A-Z])$/.exec(code);
+    if (letter) return event.shiftKey ? letter[1] : letter[1].toLowerCase();
+    var map = {
+      Minus: ['-', '_'], Equal: ['=', '+'], BracketLeft: ['[', '{'], BracketRight: [']', '}'],
+      Backslash: ['\\', '|'], Semicolon: [';', ':'], Quote: ["'", '"'], Comma: [',', '<'],
+      Period: ['.', '>'], Slash: ['/', '?'], Backquote: ['`', '~'], Space: [' ', ' ']
+    };
+    if (map[code]) return map[code][event.shiftKey ? 1 : 0];
+    return null;
+  }
+
   function scanCard() {
     var input = h('input', {
       id: 'scanInput', type: 'text', dir: 'ltr', autocomplete: 'off',
       placeholder: 'امسح بطاقة الطالب أو أدخل رقمه (4 أرقام)', 'aria-label': 'مدخل مسح الطالب'
     });
+    // مدخل مخفي يستقبل الباركود دون إظهار النص الخام في الشريط.
+    var capture = h('input', {
+      id: 'scanCapture', type: 'text', className: 'scan-capture', tabindex: '-1',
+      autocomplete: 'off', 'aria-hidden': 'true'
+    });
+    var captureBuffer = '';
     var reason = h('input', {
       id: 'scanReason', type: 'text', maxlength: 200,
       placeholder: 'سبب التسجيل اليدوي (مطلوب عند إدخال الرقم)', 'aria-label': 'سبب التسجيل اليدوي'
@@ -58,9 +86,47 @@
     var submit = h('button', { className: 'btn primary', type: 'submit', text: 'تسجيل' });
     var result = h('div', { id: 'scanResult', className: 'scan-result' + (state.lastScan ? (state.lastScan.ok ? ' ok' : ' bad') : '') }, scanResultContent());
     function scanned(text) {
-      input.value = text;
+      input.value = '';
       performScan(text, reason.value, submit);
     }
+    // إن كُتب الباركود في الحقل المرئي (نادرًا) نكتشف السرعة ونستخدم النص
+    // المستخرج من event.code ثم نمسح الحقل فورًا.
+    var visibleBuffer = [];
+    input.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') {
+        var now = Date.now();
+        var chars = visibleBuffer.map(function (item) { return item.ch; }).join('');
+        var isScanner = visibleBuffer.length >= 5 && (now - visibleBuffer[0].at) <= visibleBuffer.length * 45;
+        visibleBuffer = [];
+        if (isScanner && chars) {
+          event.preventDefault();
+          input.value = '';
+          performScan(chars, reason.value, submit);
+        }
+        return;
+      }
+      var key = scanKeyChar(event);
+      if (key === null) return;
+      visibleBuffer.push({ ch: key, at: Date.now() });
+      if (visibleBuffer.length > 80) visibleBuffer.shift();
+    });
+    input.addEventListener('blur', function () { visibleBuffer = []; });
+    capture.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        var text = captureBuffer || capture.value;
+        captureBuffer = '';
+        capture.value = '';
+        if (text) performScan(text, reason.value, submit);
+        return;
+      }
+      var key = scanKeyChar(event);
+      if (key === null) return;
+      event.preventDefault();
+      captureBuffer += key;
+      capture.value = '';
+    });
+    capture.addEventListener('blur', function () { captureBuffer = ''; });
     var camera = h('button', {
       className: 'btn', type: 'button', text: 'الكاميرا', title: 'مسح QR بكاميرا الجهاز',
       onClick: function () { ui.openCamera('مسح بطاقة الطالب', scanned); }
@@ -71,7 +137,12 @@
     });
     var form = h('form', {
       className: 'scan-hero',
-      onSubmit: function (event) { event.preventDefault(); performScan(input.value, reason.value, submit); }
+      onSubmit: function (event) {
+        event.preventDefault();
+        var value = input.value;
+        input.value = '';
+        performScan(value, reason.value, submit);
+      }
     }, [
       h('div', {}, [h('h3', { text: 'تسجيل سريع' }), h('div', { className: 'hint', text: 'الوصول والانصراف مستقلان؛ اختر نوع التسجيل ثم امسح البطاقة.' })]),
       ui.segmented([
@@ -79,6 +150,7 @@
         { value: 'out', label: 'انصراف', activeClass: 'out' }
       ], state.scanMode, function (value) { state.scanMode = value; drawHome(); }),
       h('div', { className: 'input-action' }, [input, camera, image]),
+      capture,
       reason,
       h('div', { className: 'btn-row' }, [submit]),
       result
@@ -243,7 +315,10 @@
     if (can('scan') && isToday && !data.offDay && data.day && !data.day.closed) parts.push(scanCard());
     parts.push(recordsCard(data));
     mount(ui.$('main'), parts);
-    if (can('scan') && isToday) setTimeout(function () { var input = ui.$('scanInput'); if (input) { try { input.focus(); } catch (ignored) { /* تجاهل */ } } }, 70);
+    if (can('scan') && isToday) setTimeout(function () {
+      var capture = ui.$('scanCapture');
+      if (capture) { try { capture.focus(); } catch (ignored) { /* تجاهل */ } }
+    }, 70);
   }
 
   ui.renderHome = renderHome;

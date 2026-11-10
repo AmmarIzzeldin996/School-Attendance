@@ -153,7 +153,7 @@
       <div class="field">
         <label>الأجهزة المكتشفة على الشبكة</label>
         <div class="peers" id="peerList"><span class="hint">جارٍ البحث على الشبكة المحلية…</span></div>
-        <span class="hint">إن لم يظهر الجهاز، أدخل عنوانه ومفتاح المزامنة يدويًا من إعدادات الجهاز الآخر.</span>
+        <span class="hint">إن لم يظهر الجهاز، أدخل عنوانه ومفتاح المزامنة يدويًا من إعدادات الجهاز الآخر (لوحة سطح المكتب ← المزامنة). المفتاح لا يُبثّ عبر الشبكة.</span>
       </div>
 
       <div class="field">
@@ -264,7 +264,9 @@
       button.textContent = 'استخدام';
       button.addEventListener('click', function () {
         $('joinUrl').value = peer.url;
-        $('joinKey').value = peer.key || '';
+        // المفتاح لا يأتي من الاكتشاف؛ يبقى على المشرف إدخاله يدويًا.
+        $('joinKey').value = '';
+        $('joinKey').focus();
         clearAlert($('joinAlert'));
       });
       row.appendChild(name); row.appendChild(url); row.appendChild(spacer); row.appendChild(button);
