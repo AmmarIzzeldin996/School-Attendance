@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>نظام حضور الطلاب — School Attendance</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 40px 20px 64px;
+    font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+    line-height: 1.9; color: #1c2733; background: #f4f7f9;
+  }
+  main { max-width: 760px; margin: 0 auto; background: #fff; border-radius: 14px; padding: 40px; box-shadow: 0 2px 18px rgba(23,63,95,.08); }
+  .badge { display: inline-block; background: #173f5f; color: #fff; border-radius: 10px; padding: 6px 12px; font-size: 14px; }
+  h1 { font-size: 28px; margin: 18px 0 8px; color: #0d5c4a; }
+  h2 { font-size: 19px; margin: 28px 0 8px; color: #173f5f; }
+  p, li { font-size: 16px; }
+  ul { padding-right: 22px; }
+  a { color: #0d5c4a; }
+  .muted { color: #5b6b7a; font-size: 14px; }
+  footer { max-width: 760px; margin: 24px auto 0; text-align: center; }
+  @media (max-width: 560px) { main { padding: 24px; } h1 { font-size: 23px; } }
+</style>
+</head>
+<body>
+<main>
+  <span class="badge">School Attendance 3.6</span>
+  <h1>نظام حضور الطلاب</h1>
+  <p>
+    تطبيق سطح مكتب لمتابعة حضور وانصراف طلاب المدرسة، يعمل على أجهزة Windows داخل شبكة المدرسة
+    ويحفظ بياناته محليًا على جهاز المدرسة. صُمم للعمل دون إنترنت، ويستخدم Google Drive
+    اختياريًا لحفظ نسخة احتياطية من بيانات المدرسة.
+  </p>
+
+  <h2>ما الذي يقدمه النظام؟</h2>
+  <ul>
+    <li>تسجيل الحضور والانصراف بالمسح الضوئي للبطاقات أو يدويًا.</li>
+    <li>إدارة الطلاب والفصول وأولياء الأمور والسائقين والرحلات.</li>
+    <li>تقارير يومية وفصلية قابلة للطباعة والتصدير.</li>
+    <li>طباعة بطاقات تعريف بمقاس 6×6 سم تحتوي رمز QR لكل طالب أو سائق أو مستخدم.</li>
+    <li>مزامنة بين أجهزة المدرسة على الشبكة المحلية، وسجل تدقيق لكل عملية.</li>
+    <li>نسخ احتياطي محلي، ونسخ سحابي اختياري إلى حساب Google الخاص بالمدرسة.</li>
+  </ul>
+
+  <h2>لمن هذا التطبيق؟</h2>
+  <p>
+    للمدارس والمؤسسات التعليمية التي تدير الحضور على أجهزتها الخاصة. التطبيق غير موجّه للجمهور،
+    ولا ينشئ حسابات عامة، ولا يبيع بيانات أو يشاركها مع أطراف أخرى.
+  </p>
+
+  <h2>الحساب والصلاحيات</h2>
+  <p>
+    عند ربط حساب Google (اختياري) يُطلب منح صلاحية <code dir="ltr">drive.file</code> فقط،
+    وهي تسمح للتطبيق بإنشاء ملفات النسخ الاحتياطي وقراءتها داخل حساب المدرسة، ولا تمنح
+    وصولًا إلى بقية ملفات Drive. يمكن إلغاء الربط في أي وقت من إعدادات التطبيق.
+  </p>
+
+  <h2>الخصوصية والتواصل</h2>
+  <p>
+    تفاصيل البيانات التي يحفظها النظام وكيفية حمايتها في
+    <a href="privacy.html">سياسة الخصوصية</a>.
+    لأي استفسار: <a href="mailto:klodi.mk9000@gmail.com">klodi.mk9000@gmail.com</a>.
+  </p>
+  <p class="muted">آخر تحديث: 14 نوفمبر 2026</p>
+</main>
+<footer class="muted">© 2026 نظام حضور الطلاب</footer>
+</body>
+</html>
