@@ -272,6 +272,64 @@
         message.appendChild(alertBox(error.message || 'ملف غير صالح.', 'error'));
       });
     });
+    // ربط حساب Google للمشرف: الطريقة الوحيدة لرفع ملفات JSON وXLSX إلى Drive،
+    // لأن حساب الخدمة لا يملك مساحة تخزين.
+    var userAuth = backup.userAuth || { present: false, linked: false, email: '' };
+    var oauthFile = el('input', { type: 'file', accept: '.json,application/json' });
+    var oauthNodes = [];
+    if (userAuth.linked) {
+      oauthNodes.push(el('div', { className: 'hint', text: 'مرتبط بحساب: ' + (userAuth.email || 'حساب Google') }));
+      oauthNodes.push(button('إلغاء الربط', function (node) {
+        node.disabled = true;
+        request('/desktop/backup/oauth/remove', { method: 'POST' }).then(function () {
+          message.innerHTML = '';
+          message.appendChild(alertBox('أُلغي ربط حساب Google؛ يعود النسخ إلى أرشيف جدول Google.', 'ok'));
+          refresh(modalRef, true);
+        }).catch(function (error) {
+          message.innerHTML = '';
+          message.appendChild(alertBox(error.message, 'error'));
+          node.disabled = false;
+        });
+      }, 'sm danger'));
+    } else {
+      oauthNodes.push(el('div', { className: 'ds-inline' }, [oauthFile, button('ربط حساب Google', function (node) {
+        var file = oauthFile.files && oauthFile.files[0];
+        if (!file) {
+          message.innerHTML = '';
+          message.appendChild(alertBox('اختر ملف عميل OAuth (client_secret_*.json) أولًا.', 'warn'));
+          return;
+        }
+        node.disabled = true;
+        file.text().then(function (text) {
+          return request('/desktop/backup/oauth/start', { method: 'POST', body: { client: JSON.parse(text) } });
+        }).then(function (data) {
+          if (window.desktopSA && window.desktopSA.openExternal) window.desktopSA.openExternal(data.url);
+          else window.open(data.url, '_blank', 'noopener');
+          message.innerHTML = '';
+          message.appendChild(alertBox('أكمل الموافقة في المتصفح، ثم اضغط «تحقق من الربط».', 'info'));
+        }).catch(function (error) {
+          message.innerHTML = '';
+          message.appendChild(alertBox(error.message || 'ملف عميل OAuth غير صالح.', 'error'));
+        }).finally(function () { node.disabled = false; });
+      }), button('تحقق من الربط', function (node) {
+        node.disabled = true;
+        request('/desktop/backup/status').then(function (status) {
+          var linked = status && status.userAuth && status.userAuth.linked;
+          message.innerHTML = '';
+          message.appendChild(alertBox(linked
+            ? 'تم ربط حساب Google بنجاح: ' + (status.userAuth.email || 'حساب Google') + '.'
+            : 'لم يكتمل الربط بعد. أكمل الموافقة في المتصفح ثم أعد المحاولة.', linked ? 'ok' : 'warn'));
+          if (linked) refresh(modalRef, true);
+        }).catch(function (error) {
+          message.innerHTML = '';
+          message.appendChild(alertBox(error.message, 'error'));
+        }).finally(function () { node.disabled = false; });
+      }, 'sm')]));
+    }
+    nodes.push(section('حساب Google لرفع الملفات',
+      'أنشئ عميل OAuth (نوع Desktop app) في نفس مشروع Google Cloud، فعّل Drive API، ثم ارفع ملف client_secret_*.json واربط الحساب. الصلاحية المطلوبة drive.file فقط (الملفات التي ينشئها النظام).',
+      [el('div', { className: 'ds-actions' }, oauthNodes)]));
+
     nodes.push(section('حساب خدمة Google', 'ارفع ملف مفتاح حساب الخدمة (JSON). يُخزَّن مشفرًا على هذا الجهاز ولا يُرسل لأي طرف آخر.', [
       el('div', { className: 'ds-inline' }, [fileInput, button('اختبار الاتصال', function (node) {
         node.disabled = true;

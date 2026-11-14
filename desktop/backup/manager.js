@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { ensureDir, readJson, writeJsonAtomic, writeTextAtomic } = require('../lib/atomic');
 const { Mutex } = require('../lib/mutex');
-const { GoogleClient, validateCredentials, JSON_ARCHIVE_TAB } = require('./google');
+const { GoogleClient, GoogleUserAuth, validateCredentials, validateUserAuth, JSON_ARCHIVE_TAB } = require('./google');
 const { readableTabs, writeWorkbook } = require('./workbook');
 
 const DEFAULT_FOLDER = 'School Attendance Backups';
@@ -45,6 +45,12 @@ class BackupManager {
     this.busy = false;
     ensureDir(this.dir);
     ensureDir(this.exportDir);
+    // ربط حساب Google للمشرف اختياري؛ بدونه يبقى سلوك حساب الخدمة كما هو.
+    const userSecrets = options.userSecrets || (this.secrets && this.secrets.scope
+      ? this.secrets.scope('google-user', validateUserAuth, (data) => ({ email: String(data.email || ''), project: '' }))
+      : null);
+    this.userAuth = userSecrets ? new GoogleUserAuth(userSecrets, { logger: this.logger }) : null;
+    this.pendingAuth = null;
     this.config = Object.assign({
       enabled: true,
       auto: true,
@@ -121,6 +127,7 @@ class BackupManager {
         spreadsheetId: this.config.spreadsheetId,
         folderId: this.config.folderId
       },
+      userAuth: this.userInfo(),
       state: this.state,
       busy: this.busy
     };
@@ -132,9 +139,47 @@ class BackupManager {
     return new GoogleClient(credentials, { logger: this.logger });
   }
 
-  async ensureRemote(client) {
-    const parentId = process.env.SCHOOL_ATTENDANCE_DRIVE_PARENT || '';
-    const folder = await client.findOrCreateFolder(this.config.folderName, parentId);
+  userInfo() {
+    return this.userAuth ? this.userAuth.info() : { present: false, linked: false, email: '', clientId: '' };
+  }
+
+  // عميل Drive بمساحة المشرف؛ يستخدم فقط عند ربط الحساب.
+  userClient() {
+    if (!this.userAuth || !this.userAuth.info().linked) return null;
+    return this.userAuth.client();
+  }
+
+  saveUserClient(input) {
+    if (!this.userAuth) throw new Error('ربط حساب Google غير متاح على هذا الجهاز.');
+    return this.userAuth.saveClient(input);
+  }
+
+  async startUserAuth(input) {
+    if (!this.userAuth) throw new Error('ربط حساب Google غير متاح على هذا الجهاز.');
+    if (input) this.userAuth.saveClient(input);
+    if (this.pendingAuth) {
+      try { this.pendingAuth.close(); } catch (ignored) { /* مهلة سابقة */ }
+    }
+    const flow = await this.userAuth.begin();
+    this.pendingAuth = flow;
+    flow.done.then(() => { this.pendingAuth = null; }).catch(() => { this.pendingAuth = null; });
+    return { url: flow.url };
+  }
+
+  removeUserAuth() {
+    if (!this.userAuth) return { ok: true };
+    this.userAuth.remove();
+    this.state.lastArchiveMode = '';
+    this.state.lastArchiveNote = '';
+    this.saveState();
+    return { ok: true };
+  }
+
+  async ensureRemote(service, drive) {
+    const folder = await (drive || service).findOrCreateFolder(
+      this.config.folderName,
+      process.env.SCHOOL_ATTENDANCE_DRIVE_PARENT || ''
+    );
     this.config.folderId = folder.id;
     this.saveConfig();
 
@@ -143,11 +188,11 @@ class BackupManager {
       spreadsheet = { id: this.config.spreadsheetId, name: this.config.spreadsheetName };
     } else {
       const escaped = String(this.config.spreadsheetName).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-      const found = await client.findFiles(
+      const found = await service.findFiles(
         "mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false and name = '" + escaped + "'"
       );
       if (found.length) spreadsheet = { id: found[0].id, name: found[0].name, url: found[0].webViewLink };
-      else spreadsheet = await client.ensureSpreadsheet(this.config.spreadsheetName, folder.id);
+      else spreadsheet = await service.ensureSpreadsheet(this.config.spreadsheetName, '');
       this.config.spreadsheetId = spreadsheet.id;
       this.saveConfig();
     }
@@ -155,10 +200,12 @@ class BackupManager {
   }
 
   async testConnection() {
-    const client = this.client();
-    const remote = await this.ensureRemote(client);
+    const service = this.client();
+    const drive = this.userClient();
+    const remote = await this.ensureRemote(service, drive);
     return {
-      email: client.credentials.client_email,
+      email: service.credentials.client_email,
+      userEmail: this.userInfo().email,
       folderId: remote.folder.id,
       folderName: remote.folder.name,
       folderUrl: 'https://drive.google.com/drive/folders/' + remote.folder.id,
@@ -261,19 +308,20 @@ class BackupManager {
   }
 
   async uploadToCloud(snapshot, jsonName, jsonText, xlsxName, xlsx, settings, reason) {
-    const client = this.client();
-    const remote = await this.ensureRemote(client);
+    const service = this.client();
+    const drive = this.userClient();
+    const remote = await this.ensureRemote(service, drive);
 
     // الجدول المقروء أولًا: هذا المسار يعمل دائمًا مع حساب الخدمة.
-    await client.writeTabs(remote.spreadsheet.id, readableTabs(snapshot));
+    await service.writeTabs(remote.spreadsheet.id, readableTabs(snapshot));
 
     let json = null;
     let excel = null;
     let archiveMode = 'drive-files';
     let archiveNote = '';
     try {
-      json = await client.uploadBuffer(remote.folder.id, jsonName, Buffer.from(jsonText, 'utf8'), 'application/json');
-      excel = await client.uploadBuffer(
+      json = await (drive || service).uploadBuffer(remote.folder.id, jsonName, Buffer.from(jsonText, 'utf8'), 'application/json');
+      excel = await (drive || service).uploadBuffer(
         remote.folder.id,
         xlsxName,
         xlsx,
@@ -282,10 +330,10 @@ class BackupManager {
     } catch (error) {
       if (!isStorageQuotaError(error)) throw error;
       // بديل موثّق: أرشيف JSON داخل تبويب في جدول Google نفسه.
-      await client.writeJsonArchive(remote.spreadsheet.id, JSON_ARCHIVE_TAB, jsonName, jsonText);
+      await service.writeJsonArchive(remote.spreadsheet.id, JSON_ARCHIVE_TAB, jsonName, jsonText);
       archiveMode = 'google-sheet';
       archiveNote = 'حساب الخدمة لا يملك مساحة Drive لرفع ملفات ثنائية؛ حُفظ أرشيف JSON داخل تبويب «' +
-        JSON_ARCHIVE_TAB + '» في جدول Google. النسختان المحليتان JSON وXLSX محفوظتان على الجهاز.';
+        JSON_ARCHIVE_TAB + '» في جدول Google. اربط حساب Google للمشرف من التبويب نفسه لرفع الملفات إلى Drive.';
       this.logger.warn('backup_drive_quota_fallback', { tab: JSON_ARCHIVE_TAB, size: jsonText.length });
     }
 
@@ -294,7 +342,7 @@ class BackupManager {
       const prefix = "name contains 'attendance-" + this.deviceId + "-' and trashed = false";
       let old = [];
       try {
-        old = await client.findFiles(prefix + " and '" + remote.folder.id + "' in parents");
+        old = await (drive || service).findFiles(prefix + " and '" + remote.folder.id + "' in parents");
       } catch (error) {
         this.logger.warn('backup_list_failed', { message: error.message });
       }
@@ -303,7 +351,7 @@ class BackupManager {
         .filter((file) => /\.json$/.test(file.name))
         .sort((a, b) => String(b.createdTime).localeCompare(String(a.createdTime)));
       for (const file of keep.slice(limit)) {
-        try { await client.remove(file.id); pruned += 1; } catch (error) {
+        try { await (drive || service).remove(file.id); pruned += 1; } catch (error) {
           this.logger.warn('backup_prune_failed', { file: file.id, message: error.message });
         }
       }
@@ -324,11 +372,13 @@ class BackupManager {
 
   async importLatest() {
     return this.mutex.run(async () => {
-      const client = this.client();
-      const remote = await this.ensureRemote(client);
+      const service = this.client();
+      const drive = this.userClient();
+      const remote = await this.ensureRemote(service, drive);
+      const reader = drive || service;
       let files = [];
       try {
-        files = await client.findFiles(
+        files = await reader.findFiles(
           "name contains 'attendance-' and trashed = false and '" + remote.folder.id + "' in parents and mimeType = 'application/json'"
         );
       } catch (error) {
@@ -336,7 +386,7 @@ class BackupManager {
       }
       if (!files.length) {
         try {
-          const all = await client.findFiles("name contains 'attendance-' and trashed = false and '" + remote.folder.id + "' in parents");
+          const all = await reader.findFiles("name contains 'attendance-' and trashed = false and '" + remote.folder.id + "' in parents");
           files = all.filter((file) => /\.json$/.test(file.name));
         } catch (error) {
           this.logger.warn('backup_list_failed', { message: error.message });
@@ -348,7 +398,7 @@ class BackupManager {
 
       if (files.length) {
         const latest = files.sort((a, b) => String(b.createdTime).localeCompare(String(a.createdTime)))[0];
-        const buffer = await client.download(latest.id);
+        const buffer = await reader.download(latest.id);
         const target = this.store.createFile(folderId, 'cloud-' + latest.name, buffer.toString('utf8'));
         this.store.save();
         this.logger.info('backup_cloud_imported', { file: latest.name, mode: 'drive-files' });
@@ -362,7 +412,7 @@ class BackupManager {
         };
       }
 
-      const archived = await client.readJsonArchive(remote.spreadsheet.id, JSON_ARCHIVE_TAB);
+      const archived = await service.readJsonArchive(remote.spreadsheet.id, JSON_ARCHIVE_TAB);
       if (!archived) throw new Error('لا توجد نسخة احتياطية سحابية قابلة للاستعادة.');
       const name = archived.name || ('attendance-' + JSON_ARCHIVE_TAB + '.json');
       const target = this.store.createFile(folderId, 'cloud-' + name, archived.text);

@@ -5,16 +5,46 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { ensureDir, readJson, writeJsonAtomic } = require('./atomic');
 
-// تخزين آمن لبيانات حساب الخدمة. في Electron يستخدم DPAPI عبر safeStorage،
+function validateServiceAccount(credentials) {
+  if (!credentials || typeof credentials !== 'object') {
+    throw new Error('بيانات حساب الخدمة غير صالحة.');
+  }
+  if (!String(credentials.client_email || '').includes('@')) {
+    throw new Error('بيانات حساب الخدمة تفتقد البريد الإلكتروني client_email.');
+  }
+  if (!String(credentials.project_id || '').trim()) {
+    throw new Error('بيانات حساب الخدمة تفتقد معرف المشروع project_id.');
+  }
+  if (!/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(String(credentials.private_key || ''))) {
+    throw new Error('المفتاح الخاص في بيانات حساب الخدمة غير صالح.');
+  }
+  return credentials;
+}
+
+function describeServiceAccount(credentials) {
+  return { email: String(credentials.client_email || ''), project: String(credentials.project_id || '') };
+}
+
+// تخزين آمن لبيانات الاعتماد. في Electron يستخدم DPAPI عبر safeStorage،
 // وفي الاختبارات أو البيئات بلا تشفير متاح يُستخدم AES-GCM بمفتاح محلي.
 class Secrets {
   constructor(dataDir, options) {
+    options = options || {};
+    this.root = dataDir;
     this.dir = path.join(dataDir, 'secrets');
-    this.file = path.join(this.dir, 'service-account.enc');
-    this.metaFile = path.join(this.dir, 'service-account.meta.json');
+    this.name = options.name || 'service-account';
+    this.file = path.join(this.dir, this.name + '.enc');
+    this.metaFile = path.join(this.dir, this.name + '.meta.json');
     this.keyFile = path.join(this.dir, 'local.key');
-    this.safeStorage = (options && options.safeStorage) || null;
+    this.safeStorage = options.safeStorage || null;
+    this.validate = options.validate || validateServiceAccount;
+    this.describe = options.describe || describeServiceAccount;
     ensureDir(this.dir);
+  }
+
+  // مخزن مشفّر إضافي (مثل رمز حساب Google) بنفس المفتاح المحلي.
+  scope(name, validate, describe) {
+    return new Secrets(this.root, { safeStorage: this.safeStorage, name, validate, describe });
   }
 
   available() {
@@ -62,25 +92,15 @@ class Secrets {
   }
 
   save(credentials) {
-    if (!credentials || typeof credentials !== 'object') {
-      throw new Error('بيانات حساب الخدمة غير صالحة.');
-    }
-    if (!String(credentials.client_email || '').includes('@')) {
-      throw new Error('بيانات حساب الخدمة تفتقد البريد الإلكتروني client_email.');
-    }
-    if (!String(credentials.project_id || '').trim()) {
-      throw new Error('بيانات حساب الخدمة تفتقد معرف المشروع project_id.');
-    }
-    if (!/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(String(credentials.private_key || ''))) {
-      throw new Error('المفتاح الخاص في بيانات حساب الخدمة غير صالح.');
-    }
-    const text = JSON.stringify(credentials);
+    const clean = this.validate(credentials);
+    const meta = this.describe(clean);
+    const text = JSON.stringify(clean);
     const payload = this.encrypt(text);
     fs.writeFileSync(this.file, JSON.stringify(payload), { encoding: 'utf8', mode: 0o600 });
     writeJsonAtomic(this.metaFile, {
       present: true,
-      clientEmail: String(credentials.client_email || ''),
-      projectId: String(credentials.project_id || ''),
+      clientEmail: String((meta && meta.email) || ''),
+      projectId: String((meta && meta.project) || ''),
       protectedBy: payload.mode === 'dpapi' ? 'Windows DPAPI' : 'AES-256-GCM محلي',
       savedAt: new Date().toISOString()
     });
@@ -93,7 +113,7 @@ class Secrets {
     if (!payload) throw new Error('ملف بيانات الاعتماد تالف.');
     const text = this.decrypt(payload);
     const credentials = JSON.parse(text);
-    if (!credentials || !credentials.client_email) throw new Error('بيانات الاعتماد غير صالحة.');
+    this.validate(credentials);
     return credentials;
   }
 

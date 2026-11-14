@@ -4,7 +4,7 @@ import path from 'node:path';
 import XLSX from 'xlsx';
 import { BackupManager } from '../backup/manager.js';
 import { Secrets } from '../lib/secrets.js';
-import { validateCredentials } from '../backup/google.js';
+import { validateCredentials, validateUserAuth } from '../backup/google.js';
 import { installRuntime, quietLogger, cleanup, tempDir } from './helpers.js';
 
 const dirs = [];
@@ -118,5 +118,71 @@ describe('backup manager', () => {
       project_id: 'x', client_email: 'a@b.c', private_key: '-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----'
     });
     expect(clean.token_uri).toContain('oauth2');
+  });
+
+  it('prepares a Google user link with PKCE without network calls', async () => {
+    const { backup } = await setup();
+    expect(backup.status().userAuth.linked).toBe(false);
+    expect(() => backup.saveUserClient({ client_id: 'not-a-client' })).toThrow(/apps\.googleusercontent/);
+
+    backup.saveUserClient({
+      installed: { client_id: 'demo.apps.googleusercontent.com', client_secret: 'desktop-secret' }
+    });
+    expect(backup.status().userAuth.present).toBe(true);
+
+    const started = await backup.startUserAuth();
+    const url = new URL(started.url);
+    expect(url.origin + url.pathname).toBe('https://accounts.google.com/o/oauth2/v2/auth');
+    expect(url.searchParams.get('code_challenge_method')).toBe('S256');
+    expect(url.searchParams.get('code_challenge')).toHaveLength(43);
+    expect(url.searchParams.get('scope')).toContain('drive.file');
+    expect(url.searchParams.get('access_type')).toBe('offline');
+    expect(url.searchParams.get('redirect_uri')).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    backup.pendingAuth.close();
+
+    backup.removeUserAuth();
+    expect(backup.status().userAuth.present).toBe(false);
+  });
+
+  it('refreshes the linked user token with the stored refresh token', async () => {
+    const { backup } = await setup();
+    backup.saveUserClient({ installed: { client_id: 'demo.apps.googleusercontent.com', client_secret: 's' } });
+    backup.userAuth.secrets.save(validateUserAuth({
+      client_id: 'demo.apps.googleusercontent.com',
+      refresh_token: 'refresh-1',
+      email: 'owner@example.com'
+    }));
+    let body = '';
+    backup.userAuth.fetchImpl = async (url, options) => {
+      body = String(options.body);
+      return { ok: true, status: 200, text: async () => JSON.stringify({ access_token: 'access-1', expires_in: 3600 }) };
+    };
+    const token = await backup.userAuth.client().accessToken();
+    expect(token).toBe('access-1');
+    expect(body).toContain('grant_type=refresh_token');
+    expect(body).toContain('refresh_token=refresh-1');
+    expect(backup.status().userAuth.linked).toBe(true);
+    expect(backup.status().userAuth.email).toBe('owner@example.com');
+  });
+
+  it('stores the refresh token and email returned by the code exchange', async () => {
+    const { backup } = await setup();
+    backup.saveUserClient({ installed: { client_id: 'demo.apps.googleusercontent.com', client_secret: 's' } });
+    const claims = Buffer.from(JSON.stringify({ email: 'owner@example.com' })).toString('base64url');
+    backup.userAuth.fetchImpl = async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({
+        access_token: 'access-2',
+        refresh_token: 'refresh-2',
+        expires_in: 3600,
+        id_token: 'header.' + claims + '.signature'
+      })
+    });
+    const info = await backup.userAuth.exchange('code-1', 'http://127.0.0.1:5555', 'verifier-1');
+    expect(info.linked).toBe(true);
+    expect(info.email).toBe('owner@example.com');
+    backup.removeUserAuth();
+    expect(backup.userAuth.info().linked).toBe(false);
   });
 });

@@ -1,9 +1,12 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const http = require('node:http');
 const { readFileSync } = require('node:fs');
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
+const USER_SCOPES = 'openid email https://www.googleapis.com/auth/drive.file';
 const SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',
   'https://www.googleapis.com/auth/drive'
@@ -42,14 +45,18 @@ function loadCredentialsFile(file) {
 
 class GoogleClient {
   constructor(credentials, options) {
-    this.credentials = validateCredentials(credentials);
-    this.logger = (options && options.logger) || { debug() {}, warn() {} };
-    this.timeoutMs = (options && options.timeoutMs) || 30000;
+    options = options || {};
+    // بديل الرمز: عند ربط حساب Google للمشرف يُمرَّر مزوّد رمز بدل مفتاح حساب الخدمة.
+    this.tokenProvider = options.tokenProvider || null;
+    this.credentials = this.tokenProvider ? null : validateCredentials(credentials);
+    this.logger = options.logger || { debug() {}, warn() {} };
+    this.timeoutMs = options.timeoutMs || 30000;
     this.token = '';
     this.tokenExpiry = 0;
   }
 
   async accessToken() {
+    if (this.tokenProvider) return this.tokenProvider();
     if (this.token && Date.now() < this.tokenExpiry - 60000) return this.token;
     const now = Math.floor(Date.now() / 1000);
     const header = base64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
@@ -301,4 +308,253 @@ class GoogleClient {
   }
 }
 
-module.exports = { GoogleClient, validateCredentials, loadCredentialsFile, SCOPES, JSON_ARCHIVE_TAB };
+// ربط حساب Google للمشرف (OAuth + PKCE) للحصول على مساحة Drive حقيقية؛
+// حساب الخدمة لا يملك مساحة لرفع الملفات الثنائية.
+function validateUserAuth(input) {
+  const data = input && typeof input === 'object' ? input : {};
+  const clientId = String(data.client_id || '').trim();
+  if (!/\.apps\.googleusercontent\.com$/.test(clientId)) {
+    throw new Error('معرّف عميل OAuth غير صحيح؛ يجب أن ينتهي بـ .apps.googleusercontent.com');
+  }
+  return {
+    client_id: clientId,
+    client_secret: String(data.client_secret || '').trim(),
+    refresh_token: String(data.refresh_token || ''),
+    email: String(data.email || ''),
+    scope: String(data.scope || USER_SCOPES),
+    linked_at: String(data.linked_at || '')
+  };
+}
+
+function idTokenEmail(idToken) {
+  try {
+    const part = String(idToken || '').split('.')[1];
+    if (!part) return '';
+    const json = JSON.parse(Buffer.from(part, 'base64url').toString('utf8'));
+    return String(json.email || '');
+  } catch (error) {
+    return '';
+  }
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+}
+
+class GoogleUserAuth {
+  constructor(secrets, options) {
+    options = options || {};
+    this.secrets = secrets;
+    this.logger = options.logger || { debug() {}, warn() {} };
+    this.fetchImpl = options.fetchImpl || fetch;
+    this.timeoutMs = options.timeoutMs || 30000;
+    this.token = '';
+    this.expiry = 0;
+  }
+
+  data() {
+    try { return this.secrets.load(); } catch (error) { return null; }
+  }
+
+  info() {
+    const data = this.data();
+    return {
+      present: !!(data && data.client_id),
+      linked: !!(data && data.refresh_token),
+      email: (data && data.email) || '',
+      clientId: (data && data.client_id) || ''
+    };
+  }
+
+  saveClient(input) {
+    let source = input;
+    if (typeof source === 'string') {
+      try { source = JSON.parse(source); } catch (error) { throw new Error('ملف عميل OAuth ليس JSON صالحًا.'); }
+    }
+    const installed = (source && (source.installed || source.web)) || source || {};
+    const clientId = String(installed.client_id || '').trim();
+    const existing = this.data();
+    const sameClient = !!(existing && existing.client_id === clientId);
+    const data = validateUserAuth({
+      client_id: clientId,
+      client_secret: installed.client_secret,
+      refresh_token: sameClient ? existing.refresh_token : '',
+      email: sameClient ? existing.email : ''
+    });
+    this.token = '';
+    this.expiry = 0;
+    this.secrets.save(data);
+    return this.info();
+  }
+
+  async begin() {
+    const data = this.data();
+    if (!data || !data.client_id) throw new Error('ارفع ملف عميل OAuth أولًا.');
+
+    const state = crypto.randomBytes(16).toString('hex');
+    const verifier = crypto.randomBytes(48).toString('base64url');
+    const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
+
+    const server = http.createServer();
+    await new Promise((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', resolve);
+    });
+    const redirectUri = 'http://127.0.0.1:' + server.address().port;
+    const url = AUTH_URL + '?' + new URLSearchParams({
+      client_id: data.client_id,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: USER_SCOPES,
+      access_type: 'offline',
+      prompt: 'consent',
+      state,
+      code_challenge: challenge,
+      code_challenge_method: 'S256'
+    }).toString();
+
+    let settle = null;
+    const done = new Promise((resolve, reject) => { settle = { resolve, reject }; });
+    let finished = false;
+    const finish = (fn, value) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      try { server.close(); } catch (ignored) { /* مغلق مسبقًا */ }
+      fn(value);
+    };
+    const timer = setTimeout(() => finish(settle.reject, new Error('انتهت مهلة ربط حساب Google؛ أعد المحاولة.')), 5 * 60 * 1000);
+    if (timer.unref) timer.unref();
+
+    server.on('request', (req, res) => {
+      const page = (status, html) => {
+        res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+        res.end('<!doctype html><meta charset="utf-8"><title>ربط حساب Google</title>' +
+          '<body style="font-family:system-ui;padding:48px;text-align:center;line-height:1.8">' + html + '</body>');
+      };
+      let requestUrl;
+      try { requestUrl = new URL(req.url, redirectUri); } catch (error) { page(400, 'طلب غير صالح.'); return; }
+      if (requestUrl.pathname !== '/') { page(404, 'مسار غير معروف.'); return; }
+
+      const failure = requestUrl.searchParams.get('error');
+      if (failure) {
+        page(400, 'لم تكتمل الموافقة: ' + escapeHtml(failure));
+        finish(settle.reject, new Error('لم تُمنح الموافقة على ربط حساب Google: ' + failure));
+        return;
+      }
+      if (requestUrl.searchParams.get('state') !== state) {
+        page(400, 'طلب غير صالح.');
+        finish(settle.reject, new Error('طلب ربط غير صالح؛ أعد المحاولة.'));
+        return;
+      }
+      this.exchange(requestUrl.searchParams.get('code'), redirectUri, verifier)
+        .then((info) => {
+          page(200, 'تم ربط حساب Google بنجاح.<br>يمكنك إغلاق هذه الصفحة والعودة إلى التطبيق.');
+          finish(settle.resolve, info);
+        })
+        .catch((error) => {
+          page(500, 'تعذر إكمال الربط. أغلق الصفحة وحاول مرة أخرى.');
+          finish(settle.reject, error);
+        });
+    });
+
+    return {
+      url,
+      redirectUri,
+      state,
+      done,
+      close: () => { if (!finished) { finished = true; clearTimeout(timer); try { server.close(); } catch (ignored) { /* مغلق */ } } }
+    };
+  }
+
+  async exchange(code, redirectUri, verifier) {
+    if (!code) throw new Error('لم يصل رمز التفويض من Google.');
+    const data = this.data();
+    if (!data || !data.client_id) throw new Error('ارفع ملف عميل OAuth أولًا.');
+    const body = new URLSearchParams({
+      client_id: data.client_id,
+      code: String(code),
+      code_verifier: verifier,
+      grant_type: 'authorization_code',
+      redirect_uri: redirectUri
+    });
+    if (data.client_secret) body.set('client_secret', data.client_secret);
+    const token = await this.tokenRequest(body);
+    const email = idTokenEmail(token.id_token) || data.email;
+    this.secrets.save(validateUserAuth({
+      client_id: data.client_id,
+      client_secret: data.client_secret,
+      refresh_token: token.refresh_token || data.refresh_token,
+      email,
+      linked_at: new Date().toISOString()
+    }));
+    this.token = token.access_token || '';
+    this.expiry = Date.now() + Number(token.expires_in || 3600) * 1000;
+    this.logger.info('google_user_linked', { email });
+    return this.info();
+  }
+
+  async tokenRequest(body) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const response = await this.fetchImpl(TOKEN_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+        signal: controller.signal
+      });
+      const text = await response.text();
+      let data = null;
+      try { data = text ? JSON.parse(text) : null; } catch (error) { data = null; }
+      if (!response.ok) {
+        const message = data && (data.error_description || data.error)
+          ? String(data.error_description || data.error)
+          : 'HTTP ' + response.status;
+        throw new Error('تعذر الحصول على تصريح Google: ' + message);
+      }
+      if (!data || !data.access_token) throw new Error('استجابة Google لا تحتوي على رمز وصول.');
+      return data;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async accessToken() {
+    if (this.token && Date.now() < this.expiry - 60000) return this.token;
+    const data = this.data();
+    if (!data || !data.refresh_token) throw new Error('حساب Google غير مرتبط؛ اربطه من تبويب النسخ السحابي.');
+    const body = new URLSearchParams({
+      client_id: data.client_id,
+      refresh_token: data.refresh_token,
+      grant_type: 'refresh_token'
+    });
+    if (data.client_secret) body.set('client_secret', data.client_secret);
+    const token = await this.tokenRequest(body);
+    this.token = token.access_token;
+    this.expiry = Date.now() + Number(token.expires_in || 3600) * 1000;
+    return this.token;
+  }
+
+  client() {
+    return new GoogleClient(null, { tokenProvider: () => this.accessToken(), logger: this.logger });
+  }
+
+  remove() {
+    this.token = '';
+    this.expiry = 0;
+    return this.secrets.remove();
+  }
+}
+
+module.exports = {
+  GoogleClient,
+  GoogleUserAuth,
+  validateCredentials,
+  validateUserAuth,
+  idTokenEmail,
+  loadCredentialsFile,
+  SCOPES,
+  USER_SCOPES,
+  JSON_ARCHIVE_TAB
+};

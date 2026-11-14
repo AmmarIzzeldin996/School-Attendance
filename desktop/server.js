@@ -587,6 +587,19 @@ class AppServer {
       return;
     }
 
+    if (pathname === '/desktop/backup/oauth/start' && method === 'POST') {
+      const body = await readJsonBody(req, MAX_JSON);
+      const started = await this.backup.startUserAuth(body.client || body);
+      sendJson(res, 200, { ok: true, url: started.url, status: this.backup.status() });
+      return;
+    }
+
+    if (pathname === '/desktop/backup/oauth/remove' && method === 'POST') {
+      this.backup.removeUserAuth();
+      sendJson(res, 200, { ok: true, status: this.backup.status() });
+      return;
+    }
+
     if (pathname === '/desktop/backup/test' && method === 'POST') {
       const test = await this.backup.testConnection();
       sendJson(res, 200, { ok: true, test });
