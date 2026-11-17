@@ -235,7 +235,7 @@
     }
     save.addEventListener('click', submit);
     modal = ui.openModal('تصحيح سجل — ' + record.name, h('div', { className: 'stack' }, [
-      ui.alertBox('التاريخ: ' + state.date + ' • الطالب: ' + record.name + ' (' + record.id + ')', 'info'),
+      ui.alertBox('التاريخ: ' + ui.fmtDate(state.date) + ' • الطالب: ' + record.name + ' (' + record.id + ')', 'info'),
       ui.labeled('نوع التصحيح', field),
       timeField,
       ui.labeled('سبب التصحيح', reason, 'يُسجَّل السبب في سجل التدقيق ولا يمكن التراجع دون أثر.')
@@ -297,12 +297,13 @@
           renderHome();
         }
       }),
+      ui.calendarMode() === 'hijri' ? h('span', { className: 'hint', text: ui.fmtDate(state.date) }) : null,
       h('button', { className: 'btn', type: 'button', text: 'تحديث', onClick: renderHome })
     ];
     if (isToday && can('closeDay') && data.day && !data.day.closed) {
       actions.push(h('button', { className: 'btn danger', type: 'button', text: 'إنهاء حضور اليوم', onClick: closeCurrentDay }));
     }
-    var parts = [ui.pageHead('لوحة اليوم', ui.weekdayName(state.date) + ' • ' + state.date + (isToday ? ' • اليوم' : ''), actions)];
+    var parts = [ui.pageHead('لوحة اليوم', ui.weekdayName(state.date) + ' • ' + ui.fmtDate(state.date) + (isToday ? ' • اليوم' : ''), actions)];
     if (!isToday) parts.push(ui.alertBox('أنت تعرض سجلًا سابقًا. التسجيل متاح لليوم الحالي فقط.', 'info'));
     if (data.offDay) parts.push(ui.alertBox('اليوم ليس من أيام الدراسة أو أنه عطلة. لا يوجد سجل حضور.', 'warn'));
     if (data.day && data.day.closed) {

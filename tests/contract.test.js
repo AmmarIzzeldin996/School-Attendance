@@ -325,4 +325,16 @@ describe('api contract', () => {
     expect(index).toContain("include('ui_Vendor')");
     expect(index).toContain('SA.boot()');
   });
+
+  it('wires the calendar toggle and formats dates through one helper', () => {
+    const srcDir = fileURLToPath(new URL('../src/', import.meta.url));
+    const app = readFileSync(srcDir + 'ui_App.html', 'utf8');
+    expect(readFileSync(srcDir + 'Index.html', 'utf8')).toContain('calendarToggle');
+    expect(app).toContain('islamic-umalqura');
+    expect(app).toContain('ui.fmtDate = fmtDate');
+    expect(app).toContain('ui.toggleCalendar = toggleCalendar');
+    ['ui_Home.html', 'ui_Trips.html', 'ui_Reports.html'].forEach((name) => {
+      expect(readFileSync(srcDir + name, 'utf8'), name).toContain('ui.fmtDate(');
+    });
+  });
 });

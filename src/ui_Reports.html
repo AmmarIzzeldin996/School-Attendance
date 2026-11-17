@@ -63,8 +63,17 @@
       filters.type = value;
       drawFilters(token);
     });
-    var fromInput = h('input', { type: 'date', value: filters.from, max: state.today });
-    var toInput = h('input', { type: 'date', value: filters.to, max: state.today });
+    var hijri = ui.calendarMode() === 'hijri';
+    var fromHint = hijri ? h('span', { className: 'hint', text: ui.fmtDate(filters.from) }) : null;
+    var toHint = hijri ? h('span', { className: 'hint', text: ui.fmtDate(filters.to) }) : null;
+    var fromInput = h('input', {
+      type: 'date', value: filters.from, max: state.today,
+      onChange: function () { if (fromHint) fromHint.textContent = ui.fmtDate(fromInput.value); }
+    });
+    var toInput = h('input', {
+      type: 'date', value: filters.to, max: state.today,
+      onChange: function () { if (toHint) toHint.textContent = ui.fmtDate(toInput.value); }
+    });
     var classroomSelect = ui.selectEl([{ value: '', label: 'كل الصفوف' }].concat(((state.settings && state.settings.classrooms) || []).map(function (name) {
       return { value: name, label: name };
     })), filters.classroom, null);
@@ -119,8 +128,8 @@
     return ui.card('نطاق التقرير', 'أقصى فترة سنة واحدة. التصدير يشمل كل الصفوف حتى لو عُرض 500 فقط.', [run], h('div', { className: 'stack' }, [
       h('div', { className: 'grid cols-3' }, [
         ui.labeled('نوع التقرير', typeSelect),
-        ui.labeled('من تاريخ', fromInput),
-        ui.labeled('إلى تاريخ', toInput)
+        hijri ? ui.labeled('من تاريخ', h('div', {}, [fromInput, fromHint])) : ui.labeled('من تاريخ', fromInput),
+        hijri ? ui.labeled('إلى تاريخ', h('div', {}, [toInput, toHint])) : ui.labeled('إلى تاريخ', toInput)
       ]),
       extrasHost
     ]));
@@ -177,7 +186,7 @@
   function columnsFor(type) {
     var lateBadge = function (value) { return value ? ui.badge('متأخر', 'pending') : '—'; };
     if (type === 'daily') return [
-      { label: 'التاريخ', value: function (row) { return row.date; } },
+      { label: 'التاريخ', value: function (row) { return ui.fmtDate(row.date); } },
       { label: 'الرقم', className: 'mono', value: function (row) { return row.id; } },
       { label: 'الطالب', value: function (row) { return row.name; } },
       { label: 'الصف', value: function (row) { return row.classroom; } },
@@ -189,7 +198,7 @@
       { label: 'التأخر', value: function (row) { return lateBadge(row.late); } }
     ];
     if (type === 'monthly') return [
-      { label: 'التاريخ', value: function (row) { return row.date; } },
+      { label: 'التاريخ', value: function (row) { return ui.fmtDate(row.date); } },
       { label: 'الإجمالي', align: 'center', value: function (row) { return row.total; } },
       { label: 'حاضر', align: 'center', value: function (row) { return row.present; } },
       { label: 'غائب', align: 'center', value: function (row) { return row.absent; } },
@@ -215,14 +224,14 @@
       { label: 'العدد', align: 'center', value: function (row) { return row.count; } }
     ];
     if (type === 'absence') return [
-      { label: 'التاريخ', value: function (row) { return row.date; } },
+      { label: 'التاريخ', value: function (row) { return ui.fmtDate(row.date); } },
       { label: 'الرقم', className: 'mono', value: function (row) { return row.id; } },
       { label: 'الطالب', value: function (row) { return row.name; } },
       { label: 'الصف', value: function (row) { return row.classroom; } },
       { label: 'الحالة', value: function (row) { return ui.statusBadge('absent'); } }
     ];
     return [
-      { label: 'التاريخ', value: function (row) { return row.date; } },
+      { label: 'التاريخ', value: function (row) { return ui.fmtDate(row.date); } },
       { label: 'السائق', value: function (row) { return row.driverName + ' (' + row.driverCode + ')'; } },
       { label: 'النوع', value: function (row) { return ui.badge(row.mode === 'in' ? 'حضور' : 'انصراف', row.mode === 'in' ? 'info' : 'draft'); } },
       { label: 'إجمالي', align: 'center', value: function (row) { return row.total; } },

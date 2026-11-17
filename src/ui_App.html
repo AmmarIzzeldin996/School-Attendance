@@ -89,6 +89,37 @@ window.SA = window.SA || {};
   function pct(value) { return value === null || value === undefined || value === '' ? '—' : value + '%'; }
   function sizeKb(bytes) { return bytes ? Math.max(1, Math.round(bytes / 1024)) + ' ك.ب' : '—'; }
 
+  /* ---------- التقويم (هجري/ميلادي): التخزين يبقى ميلاديًا ISO والتحويل عرض وإدخال فقط ---------- */
+  var CAL_KEY = 'sa36.calendar';
+  var HIJRI_FMT = null;
+  try {
+    HIJRI_FMT = new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura-nu-latn', { timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' });
+  } catch (ignored) { HIJRI_FMT = null; }
+  function calendarMode() {
+    try { return localStorage.getItem(CAL_KEY) === 'hijri' ? 'hijri' : 'greg'; }
+    catch (ignored) { return 'greg'; }
+  }
+  function fmtDate(date) {
+    var iso = String(date || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+    if (calendarMode() !== 'hijri' || !HIJRI_FMT) return iso;
+    try { return HIJRI_FMT.format(new Date(iso + 'T12:00:00Z')); }
+    catch (ignored) { return iso; }
+  }
+  function paintCalendarToggle() {
+    var node = $('calendarToggle');
+    if (!node) return;
+    var hijri = calendarMode() === 'hijri';
+    node.textContent = hijri ? 'ميلادي' : 'هجري';
+    node.title = 'التاريخ يظهر ' + (hijri ? 'هجريًا' : 'ميلاديًا') + ' — اضغط للتبديل';
+  }
+  function toggleCalendar() {
+    try { localStorage.setItem(CAL_KEY, calendarMode() === 'hijri' ? 'greg' : 'hijri'); } catch (ignored) { /* بلا تخزين محلي */ }
+    paintCalendarToggle();
+    renderView();
+    toast(calendarMode() === 'hijri' ? 'يظهر التاريخ بالهجري الآن.' : 'يظهر التاريخ بالميلادي الآن.', 'ok');
+  }
+
   /* ---------- تسميات ---------- */
   function statusLabel(value) {
     return { pending: 'لم يحضر', present: 'حاضر', absent: 'غائب' }[value] || value || '—';
@@ -757,6 +788,9 @@ window.SA = window.SA || {};
         ssoAvailable: !!config.ssoAvailable
       };
       applyBranding();
+      paintCalendarToggle();
+      var calToggle = $('calendarToggle');
+      if (calToggle) calToggle.addEventListener('click', toggleCalendar);
       var token = readToken();
       if (!token) { showLogin(); return; }
       state.token = token;
@@ -794,6 +828,7 @@ window.SA = window.SA || {};
   ui.h = h; ui.append = append; ui.clear = clear; ui.$ = $; ui.mount = mount;
   ui.todayISO = todayISO; ui.nowTime = nowTime; ui.timeOf = timeOf; ui.weekdayName = weekdayName;
   ui.monthStart = monthStart; ui.pct = pct; ui.sizeKb = sizeKb;
+  ui.fmtDate = fmtDate; ui.calendarMode = calendarMode; ui.toggleCalendar = toggleCalendar;
   ui.badge = badge; ui.statusLabel = statusLabel; ui.statusBadge = statusBadge; ui.methodLabel = methodLabel;
   ui.tripStatusLabel = tripStatusLabel; ui.tripStatusBadge = tripStatusBadge; ui.tripStateBadge = tripStateBadge;
   ui.cardTypeLabel = cardTypeLabel; ui.roleLabel = roleLabel; ui.directionLabel = directionLabel; ui.yesNo = yesNo;
