@@ -182,6 +182,7 @@ class AppServer {
     this.engine = options.engine;
     this.backup = options.backup;
     this.discovery = options.discovery;
+    this.update = options.update || null;
     this.logger = options.logger;
     this.dataDir = options.dataDir;
     this.uiDir = options.uiDir || path.join(__dirname, 'ui');
@@ -521,7 +522,8 @@ class AppServer {
         port: this.port,
         counts: this.runtime.counts(),
         sync: this.engine.status(),
-        backup: this.backup.status()
+        backup: this.backup.status(),
+        update: this.update ? this.update.status() : null
       });
       return;
     }
@@ -597,6 +599,20 @@ class AppServer {
     if (pathname === '/desktop/backup/oauth/remove' && method === 'POST') {
       this.backup.removeUserAuth();
       sendJson(res, 200, { ok: true, status: this.backup.status() });
+      return;
+    }
+
+    if (pathname === '/desktop/update/check' && method === 'POST') {
+      if (!this.update) { sendJson(res, 404, { success: false, error: 'فحص التحديث غير متاح.' }); return; }
+      const status = await this.update.check();
+      sendJson(res, 200, { ok: true, update: status });
+      return;
+    }
+
+    if (pathname === '/desktop/update/download' && method === 'POST') {
+      if (!this.update) { sendJson(res, 404, { success: false, error: 'فحص التحديث غير متاح.' }); return; }
+      const status = await this.update.download();
+      sendJson(res, 200, { ok: true, update: status });
       return;
     }
 

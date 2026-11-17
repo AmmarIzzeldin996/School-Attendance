@@ -12,6 +12,7 @@ const { Discovery } = require('./sync/discovery');
 const { BackupManager } = require('./backup/manager');
 const { requestApproval } = require('./lib/elevation');
 const { AppServer } = require('./server');
+const { Updater } = require('./update/updater');
 
 const APP_ID = 'sa.school.attendance.desktop';
 const PREFERRED_PORT = 43118;
@@ -215,6 +216,11 @@ async function boot() {
     engine,
     backup,
     discovery,
+    update: new Updater({
+      currentVersion: packageInfo.version,
+      downloadDir: path.join(dataDir, 'updates'),
+      logger
+    }),
     logger,
     dataDir,
     uiDir: path.join(__dirname, 'ui'),
@@ -230,6 +236,8 @@ async function boot() {
   baseUrl = 'http://127.0.0.1:' + port + '/';
   discovery.port = port;
   logger.info('app_ready', { url: baseUrl, installed: runtime.installed });
+  // فحص تحديث صامت عند الإقلاع؛ النتيجة تظهر في لوحة سطح المكتب.
+  server.update.check().catch(() => {});
 
   configureSession();
   createMenu();
@@ -280,6 +288,15 @@ ipcMain.handle('desktop:open-external', (_event, url) => {
   return shell.openExternal(String(url)).then(() => true).catch(() => false);
 });
 ipcMain.handle('desktop:open-data-folder', () => shell.openPath(dataDir).then(() => true).catch(() => false));
+
+ipcMain.handle('desktop:open-file', (_event, filePath) => {
+  // افتح مثبّت التحديث المنزّل فقط: .exe داخل مجلد updates الخاص بالبيانات.
+  const target = String(filePath || '');
+  const resolved = path.resolve(target);
+  const allowed = path.resolve(path.join(dataDir, 'updates'));
+  if (!resolved.startsWith(allowed + path.sep) || !/\.exe$/i.test(resolved) || !fs.existsSync(resolved)) return false;
+  return shell.openPath(resolved).then((error) => !error).catch(() => false);
+});
 ipcMain.handle('desktop:open-backups', () => {
   const dir = path.join(dataDir, 'backups', 'exports');
   try { fs.mkdirSync(dir, { recursive: true }); } catch (ignored) { /* يعرض المجلد الأب */ }

@@ -204,6 +204,7 @@ runNow
 | `backup/google.js` | OAuth حساب الخدمة، Sheets/Drive، أرشيف JSON | تشغيل النظام |
 | `backup/workbook.js` | استيراد الطلاب، تبويبات مقروءة، XLSX | تعديل القاعدة |
 | `backup/manager.js` | نسخ محلي/سحابي، استعادة، جدولة، تقليم | واجهة |
+| `update/updater.js` | فحص `update.json` على GitHub، تنزيل المثبّت مع تحقق sha256، تشغيله فوق القديم | تعديل البيانات |
 | `lib/elevation.js` | بوابة موافقة مسؤول Windows (UAC) لاستعادة كلمة المرور: nonce وملف موافقة محمي | تعديل القاعدة |
 | `ui/setup.html` | تهيئة جهاز أو الانضمام إلى جهاز آخر | واجهة GAS |
 | `ui/bridge.js` | جسر IPC الآمن للواجهة | منطق |
@@ -344,7 +345,8 @@ runNow
 | `desktop/test/backup.test.mjs` | 5 | نسخ محلي/تصدير، عدم التهيئة، الأسرار، الاحتفاظ |
 | `desktop/test/packaging.test.mjs` | 4 | اكتمال حزمة asar، `app-src`، تحليل كل سكربتات التشغيل والواجهة، أهداف x64 |
 | `desktop/test/elevation.test.mjs` | 8 | بوابة موافقة UAC: nonce، الصلاحية الزمنية، حماية مجلد الموافقة |
-| **الإجمالي** | **124** | **كل المسارات أعلاه** |
+| `desktop/test/update.test.mjs` | 7 | مقارنة الإصدارات، فحص البيان (https/exe/sha256)، التنزيل والتحقق ورفض الملف المخالف |
+| **الإجمالي** | **142** | **كل المسارات أعلاه** |
 
 `npm run verify` يفحص أيضًا: صياغة كل ملفات `.gs`، اكتمال `include` في `Index.html`،
 أن كل إجراء مستدعى من الواجهة معلن، وأن كل إجراء معلن (عدا `ping`) مستدعى، وغياب placeholders،

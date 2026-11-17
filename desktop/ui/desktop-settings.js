@@ -167,7 +167,53 @@
       ]),
       message
     ]));
+
+    nodes.push(updateSection(status, message));
     return nodes;
+  }
+
+  /* تحديث التطبيق: فحص ملف update.json على GitHub، تنزيل المثبّت، ثم تشغيله فوق القديم (البيانات محفوظة). */
+  function updateSection(status, message) {
+    var info = status.update || null;
+    var buttons = [];
+    buttons.push(button('فحص التحديث', function (node) {
+      node.disabled = true;
+      request('/desktop/update/check', { method: 'POST' }).then(function (data) {
+        var update = (data && data.update) || {};
+        message.innerHTML = '';
+        message.appendChild(alertBox(update.available
+          ? 'يتوفر تحديث جديد: الإصدار ' + update.manifest.version + (update.manifest.notes ? ' — ' + update.manifest.notes : '')
+          : (update.error ? 'تعذر فحص التحديث: ' + update.error : 'أنت على أحدث إصدار (' + (update.currentVersion || status.version || '') + ').'),
+          update.available ? 'ok' : 'info'));
+        refresh(modalRef, true);
+      }).catch(function (error) {
+        message.innerHTML = '';
+        message.appendChild(alertBox(error.message, 'error'));
+      }).finally(function () { node.disabled = false; });
+    }, 'sm'));
+    if (info && info.available) {
+      buttons.push(button('تنزيل التحديث ' + info.manifest.version, function (node) {
+        node.disabled = true;
+        request('/desktop/update/download', { method: 'POST' }).then(function (data) {
+          message.innerHTML = '';
+          message.appendChild(alertBox('نُزّل المثبّت إلى: ' + ((data && data.update && data.update.downloaded) || ''), 'ok'));
+          refresh(modalRef, true);
+        }).catch(function (error) {
+          message.innerHTML = '';
+          message.appendChild(alertBox(error.message, 'error'));
+        }).finally(function () { node.disabled = false; });
+      }, 'sm primary'));
+    }
+    if (info && info.downloaded) {
+      buttons.push(button('تشغيل المثبّت', function (node) {
+        if (window.desktopSA && window.desktopSA.openFile) window.desktopSA.openFile(info.downloaded);
+        message.innerHTML = '';
+        message.appendChild(alertBox('سيبدأ المثبّت؛ أغلق التطبيق عند مطالبته. بياناتك وإعداداتك محفوظة ولا تُمس.', 'info'));
+      }, 'sm'));
+    }
+    return section('تحديث التطبيق',
+      'يفحص النظام رابط تحديث عام عند الإقلاع وبالضغط هنا. التثبيت فوق الإصدار القديم يحفظ البيانات والمزامنة والنسخ السحابي.',
+      [el('div', { className: 'ds-actions' }, buttons)]);
   }
 
   var modalRef = null;
