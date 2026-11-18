@@ -131,6 +131,26 @@
 
   // طباعة باركود كل الطلاب النشطين: الأرقام فقط على الملصق، والرمز يشفّر STU-####
   // ليعمل المسح بلا سبب إدخال يدوي. لا شيء يُحفظ على الخادم.
+  // رمز QR كـSVG متجهي: يُطبع دائمًا حتى لو لم تُحمّل الصور بعد.
+  function barcodeSvg(qr) {
+    var ns = 'http://www.w3.org/2000/svg';
+    var size = qr.getModuleCount();
+    var svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('class', 'barcode-label-qr');
+    svg.setAttribute('viewBox', '0 0 ' + size + ' ' + size);
+    svg.setAttribute('shape-rendering', 'crispEdges');
+    var path = '';
+    for (var row = 0; row < size; row++) {
+      for (var col = 0; col < size; col++) {
+        if (qr.isDark(row, col)) path += 'M' + col + ' ' + row + 'h1v1h-1z';
+      }
+    }
+    var node = document.createElementNS(ns, 'path');
+    node.setAttribute('d', path);
+    svg.appendChild(node);
+    return svg;
+  }
+
   function printAllBarcodes() {
     var students = state.students.filter(function (student) { return student.active; });
     if (!students.length) { toast('لا يوجد طلاب نشطون للطباعة.', 'warn'); return; }
@@ -144,7 +164,7 @@
       sheet.appendChild(h('div', { className: 'barcode-label' }, [
         h('div', { className: 'barcode-label-name', text: student.name }),
         h('div', { className: 'barcode-label-sub', text: student.classroom }),
-        h('img', { className: 'barcode-label-qr', alt: 'باركود ' + student.id, src: qr.createDataURL(4, 1) }),
+        barcodeSvg(qr),
         h('div', { className: 'barcode-label-code', text: digits })
       ]));
     });

@@ -440,15 +440,15 @@ table.data td.num, table.data th.num { text-align: center; }
   justify-content: center; align-content: start; padding: 5mm; background: #fff;
 }
 .barcode-label {
-  width: 5.8cm; height: 3cm; box-sizing: border-box; padding: 2mm;
+  width: 5.8cm; height: 3cm; box-sizing: border-box; padding: 1mm;
   border: 1px dashed #c9d3d6; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: .5mm;
+  align-items: center; justify-content: center; gap: 0;
   background: #fff; color: #111; page-break-inside: avoid; break-inside: avoid;
 }
-.barcode-label-name { font-size: 9pt; font-weight: 700; text-align: center; line-height: 1.15; max-width: 100%; overflow-wrap: anywhere; }
-.barcode-label-sub { font-size: 7.5pt; color: #333; }
-.barcode-label-qr { width: 2cm; height: 2cm; image-rendering: pixelated; }
-.barcode-label-code { font-family: Consolas, monospace; font-size: 9pt; letter-spacing: .06em; direction: ltr; }
+.barcode-label-name { font-size: 8pt; font-weight: 700; text-align: center; line-height: 1.15; max-width: 100%; overflow-wrap: anywhere; }
+.barcode-label-sub { font-size: 7.5pt; color: #333; line-height: 1.1; }
+.barcode-label-qr { width: 1.8cm; height: 1.8cm; flex: 0 0 auto; fill: #000; }
+.barcode-label-code { font-family: Consolas, monospace; font-size: 8pt; line-height: 1.2; letter-spacing: .06em; direction: ltr; }
 
 .toasts { position: fixed; inset-inline-start: 18px; bottom: 18px; z-index: 200; display: flex; flex-direction: column; gap: 8px; max-width: min(380px, calc(100vw - 36px)); }
 .toast {

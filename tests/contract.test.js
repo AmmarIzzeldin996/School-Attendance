@@ -343,8 +343,30 @@ describe('api contract', () => {
     expect(students).toContain("text: 'طباعة كل الباركودات'");
     expect(students).toContain('printing-barcodes');
     expect(students).toContain("qr.addData('STU-' + digits)");
+    expect(students).toContain('function barcodeSvg(qr)');
+    expect(students).toContain('createElementNS');
     expect(students).toContain("text: digits");
     expect(readFileSync(srcDir + 'ui_Styles.html', 'utf8')).toContain('.barcode-label');
+  });
+
+  it('builds the bulk barcode as a printable vector SVG', () => {
+    const srcDir = fileURLToPath(new URL('../src/', import.meta.url));
+    const html = readFileSync(srcDir + 'ui_Students.html', 'utf8');
+    const start = html.indexOf('function barcodeSvg(qr) {');
+    const end = html.indexOf('\n  }', start);
+    expect(start).toBeGreaterThan(-1);
+    const source = html.slice(start, end + 4);
+    const element = () => ({ attrs: {}, setAttribute(key, value) { this.attrs[key] = value; } });
+    const svg = element();
+    svg.children = [];
+    svg.appendChild = function (child) { this.children.push(child); };
+    const document = { createElementNS: (ns, name) => (name === 'svg' ? svg : element()) };
+    const qr = { getModuleCount: () => 21, isDark: (row, col) => (row + col) % 2 === 0 };
+    const barcodeSvg = new Function('document', source + '\nreturn barcodeSvg;')(document);
+    barcodeSvg(qr);
+    expect(svg.attrs.viewBox).toBe('0 0 21 21');
+    expect(svg.children).toHaveLength(1);
+    expect(svg.children[0].attrs.d.split('M').length - 1).toBe(221);
   });
 
   it('wires adding an unrelated student to an open trip', () => {
