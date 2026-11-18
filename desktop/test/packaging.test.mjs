@@ -20,6 +20,7 @@ const RUNTIME_PATTERNS = [
   'backup/**/*',
   'data/**/*',
   'ui/**/*',
+  'update/**/*',
   'package.json'
 ];
 
@@ -32,6 +33,19 @@ describe('desktop packaging', () => {
     });
   });
 
+  it('covers every module main.js requires at startup', () => {
+    const files = pkg.build.files;
+    const source = fs.readFileSync(path.join(desktop, 'main.js'), 'utf8');
+    const local = [...source.matchAll(/require\('\.\/([^'/]+)/g)].map((match) => match[1]);
+    const unique = [...new Set(local)];
+    expect(unique.length).toBeGreaterThan(3);
+    unique.forEach((entry) => {
+      const pattern = files.includes(entry + '.js') ? entry + '.js'
+        : (/\.(js|json)$/.test(entry) ? entry : entry + '/**/*');
+      expect(files, 'main.js requires ' + entry + ' but build.files lacks ' + pattern).toContain(pattern);
+    });
+  });
+
   it('ships the GAS sources as read-only extra resources', () => {
     const resources = pkg.build.extraResources || [];
     const source = resources.find((entry) => entry.to === 'app-src');
@@ -41,7 +55,7 @@ describe('desktop packaging', () => {
   });
 
   it('parses every runtime and UI script', () => {
-    const roots = ['main.js', 'preload.js', 'server.js', 'lib', 'vm', 'sync', 'backup', 'data', 'ui'];
+    const roots = ['main.js', 'preload.js', 'server.js', 'lib', 'vm', 'sync', 'backup', 'data', 'ui', 'update'];
     const files = [];
     roots.forEach((entry) => {
       const target = path.join(desktop, entry);

@@ -43,6 +43,7 @@
       "backup/**/*",
       "data/**/*",
       "ui/**/*",
+      "update/**/*",
       "package.json"
     ],
     "extraResources": [

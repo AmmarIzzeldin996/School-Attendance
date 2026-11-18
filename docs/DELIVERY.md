@@ -11,8 +11,8 @@
 
 | الملف | الحجم | SHA-256 |
 |---|---:|---|
-| `School-Attendance-Setup-3.6.1-x64.exe` | 122,779,032 بايت | `90ECA2139A62EFCED2C9C73C6CB802880B3B8DD732539740699FE4994E3569A2` |
-| `School-Attendance-Portable-3.6.1-x64.exe` | 111,250,592 بايت | `5421F8C91028A0598284F393D5D9C550432865E922072EDDD8374E9964D85487` |
+| `School-Attendance-Setup-3.6.1-x64.exe` | 122,780,120 بايت | `D62FAEE1EA19F4767AF46461C141964F7ACB478E58FFE6DF142164DDFB7A74BD` |
+| `School-Attendance-Portable-3.6.1-x64.exe` | 111,246,672 بايت | `918E5566EA997A5EF427469F6273F363BC54883446984E333B8AF84953375C70` |
 
 - **التوقيع الرقمي:** موقّع بالشهادة الداخلية `School Attendance Internal Code Signing`،
   والحالة على جهاز البناء **`Valid`** (`Signature verified`).
@@ -125,7 +125,7 @@ npm.cmd --prefix desktop run import-students -- --file "E:\projects\بيانات
 | الفحص | النتيجة |
 |---|---|
 | `npm.cmd run verify` | OK — 13 ملف خادم، 7 ملفات واجهة، 40 إجراءً |
-| `npm.cmd test` | **145/145** ناجح (77 GAS + 68 سطح مكتب) |
+| `npm.cmd test` | **146/146** ناجح (77 GAS + 69 سطح مكتب) |
 | حزمة asar | تحتوي كل وحدات التشغيل بما فيها `data/**/*` |
 | تحليل السكربتات | كل ملفات التشغيل والواجهة تُحلَّل بلا أخطاء |
 | المحمول النهائي | يقلع، ينشئ `SchoolAttendanceData`، ويخدم `/health` و`/setup/status`، ويحمّل الواجهة الجديدة |
