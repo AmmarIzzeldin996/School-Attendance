@@ -1,6 +1,6 @@
 {
   "name": "school-attendance-desktop",
-  "version": "3.6.0",
+  "version": "3.6.1",
   "private": true,
   "type": "commonjs",
   "description": "نظام الحضور والانصراف — تطبيق سطح المكتب المستقل مع مزامنة محلية ونسخ سحابي",

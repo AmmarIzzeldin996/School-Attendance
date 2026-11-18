@@ -433,6 +433,23 @@ table.data td.num, table.data th.num { text-align: center; }
 }
 .guard-note { width: 100%; background: var(--warn-soft); color: #7a5016; border: 1px solid #ecd9b6; border-radius: 8px; padding: 8px 10px; font-size: .8rem; }
 
+/* ملصقات باركود جماعية: 3 أعمدة × 5.8 سم، تُقصّ وتُلصق. */
+.print-barcodes-host { display: none; }
+.barcode-sheet {
+  display: grid; grid-template-columns: repeat(3, 5.8cm); gap: 2mm;
+  justify-content: center; align-content: start; padding: 5mm; background: #fff;
+}
+.barcode-label {
+  width: 5.8cm; height: 3cm; box-sizing: border-box; padding: 2mm;
+  border: 1px dashed #c9d3d6; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: .5mm;
+  background: #fff; color: #111; page-break-inside: avoid; break-inside: avoid;
+}
+.barcode-label-name { font-size: 9pt; font-weight: 700; text-align: center; line-height: 1.15; max-width: 100%; overflow-wrap: anywhere; }
+.barcode-label-sub { font-size: 7.5pt; color: #333; }
+.barcode-label-qr { width: 2cm; height: 2cm; image-rendering: pixelated; }
+.barcode-label-code { font-family: Consolas, monospace; font-size: 9pt; letter-spacing: .06em; direction: ltr; }
+
 .toasts { position: fixed; inset-inline-start: 18px; bottom: 18px; z-index: 200; display: flex; flex-direction: column; gap: 8px; max-width: min(380px, calc(100vw - 36px)); }
 .toast {
   padding: 11px 14px; border-radius: 10px; background: #1f3d49; color: #fff;
@@ -481,6 +498,8 @@ details.help[open] summary { margin-bottom: 8px; }
   body { background: #fff; margin: 0; }
   body.printing-card > * { display: none !important; }
   body.printing-card > .print-card-host { display: block !important; }
+  body.printing-barcodes > * { display: none !important; }
+  body.printing-barcodes > .print-barcodes-host { display: block !important; }
   body.printing-card .print-card {
     border: none; border-radius: 0; box-shadow: none; margin: 0;
     page-break-inside: avoid;

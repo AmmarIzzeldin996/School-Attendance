@@ -186,7 +186,7 @@ class AppServer {
     this.logger = options.logger;
     this.dataDir = options.dataDir;
     this.uiDir = options.uiDir || path.join(__dirname, 'ui');
-    this.appVersion = options.appVersion || '3.6.0';
+    this.appVersion = options.appVersion || '3.6.1';
     this.onInstalled = options.onInstalled || function () {};
     this.onBeforeQuit = options.onBeforeQuit || function () {};
     this.server = null;

@@ -122,14 +122,47 @@
         })
       ]),
       can('students.write') ? h('button', { className: 'btn primary', type: 'button', text: 'إضافة طالب', onClick: function () { openStudentForm(null); } }) : null,
+      can('cards') ? h('button', { className: 'btn', type: 'button', text: 'طباعة كل الباركودات', onClick: printAllBarcodes }) : null,
       h('button', { className: 'btn', type: 'button', text: 'تحديث', onClick: renderStudents })
     ]);
     paint();
     return ui.card('قائمة الطلاب', state.students.length + ' طالب مسجّل', [], h('div', {}, [toolbar, tableHost]));
   }
 
-  function openStudentForm(student) {
-    var editing = !!student;
+  // طباعة باركود كل الطلاب النشطين: الأرقام فقط على الملصق، والرمز يشفّر STU-####
+  // ليعمل المسح بلا سبب إدخال يدوي. لا شيء يُحفظ على الخادم.
+  function printAllBarcodes() {
+    var students = state.students.filter(function (student) { return student.active; });
+    if (!students.length) { toast('لا يوجد طلاب نشطون للطباعة.', 'warn'); return; }
+    var sheet = h('div', { className: 'barcode-sheet' });
+    var skipped = 0;
+    students.forEach(function (student) {
+      var digits = String(student.id).replace(/^STU[-_]?/i, '');
+      var qr = null;
+      try { qr = window.qrcode(0, 'M'); qr.addData('STU-' + digits); qr.make(); } catch (error) { qr = null; }
+      if (!qr) { skipped += 1; return; }
+      sheet.appendChild(h('div', { className: 'barcode-label' }, [
+        h('div', { className: 'barcode-label-name', text: student.name }),
+        h('div', { className: 'barcode-label-sub', text: student.classroom }),
+        h('img', { className: 'barcode-label-qr', alt: 'باركود ' + student.id, src: qr.createDataURL(4, 1) }),
+        h('div', { className: 'barcode-label-code', text: digits })
+      ]));
+    });
+    if (!sheet.firstChild) { toast('تعذر توليد الباركود. أعد تحميل الصفحة.', 'error'); return; }
+    var host = h('div', { className: 'print-barcodes-host' }, [sheet]);
+    document.body.appendChild(host);
+    var done = function () {
+      document.body.classList.remove('printing-barcodes');
+      window.removeEventListener('afterprint', done);
+      if (host.parentNode) host.parentNode.removeChild(host);
+    };
+    document.body.classList.add('printing-barcodes');
+    window.addEventListener('afterprint', done);
+    toast('عدد الملصقات: ' + (students.length - skipped) + (skipped ? ' — تعذر توليد ' + skipped : '') + '.', skipped ? 'warn' : 'success');
+    try { window.print(); } catch (error) { done(); toast('تعذر فتح نافذة الطباعة.', 'error'); }
+  }
+
+  function openStudentForm(student) {    var editing = !!student;
     var idInput = h('input', { type: 'text', dir: 'ltr', maxlength: 30, value: editing ? student.id : '', disabled: editing, placeholder: '1001 أو STU-1001' });
     var nameInput = h('input', { type: 'text', maxlength: 120, value: editing ? student.name : '' });
     var classroomInput = h('input', { type: 'text', list: 'classroomOptions', maxlength: 80, value: editing ? student.classroom : '' });

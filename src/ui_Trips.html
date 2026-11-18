@@ -253,6 +253,10 @@
       var choice = 'scan';
       var choiceHost = h('div');
       var scanButton = h('button', { className: 'btn primary', type: 'button', text: 'تسجيل الطالب' });
+      var addButton = can('journeys') ? h('button', {
+        className: 'btn', type: 'button', text: 'إضافة طالب غير مرتبط',
+        onClick: function () { openAddStudent(trip); }
+      }) : null;
       function paintChoice() {
         ui.mount(choiceHost, ui.segmented([
           { value: 'scan', label: 'تسجيل عادي' },
@@ -299,8 +303,46 @@
         ]),
         reason,
         choiceHost,
-        h('div', { className: 'btn-row' }, [scanButton])
+        h('div', { className: 'btn-row' }, [scanButton, addButton])
       ]);
+    }
+
+    function openAddStudent(trip) {
+      var input = h('input', { type: 'text', dir: 'ltr', autocomplete: 'off', placeholder: 'امسح بطاقة الطالب أو أدخل رقمه' });
+      var reason = h('input', { type: 'text', maxlength: 200, placeholder: 'سبب الإضافة (مطلوب)' });
+      var save = h('button', { className: 'btn primary', type: 'button', text: 'إضافة للرحلة' });
+      var inner;
+      function submit() {
+        var value = String(input.value || '').trim();
+        if (!value) { toast('امسح البطاقة أو أدخل رقم الطالب.', 'warn'); return; }
+        if (String(reason.value || '').trim().length < 3) { toast('سبب الإضافة مطلوب.', 'warn'); return; }
+        setBusy(save, true);
+        api('addTripStudent', { tripId: trip.id, input: value, reason: String(reason.value || '').trim() }).then(function (data) {
+          setBusy(save, false);
+          inner.close();
+          paintTrip(data.trip);
+          toast('أُضيف الطالب للرحلة. سجّله الآن كالمعتاد.', 'success');
+        }).catch(function (error) {
+          setBusy(save, false);
+          showError(error);
+        });
+      }
+      save.addEventListener('click', submit);
+      input.addEventListener('keydown', function (event) { if (event.key === 'Enter') { event.preventDefault(); submit(); } });
+      inner = ui.openModal('إضافة طالب للرحلة', h('div', { className: 'stack' }, [
+        ui.alertBox('للطالب غير المرتبط بهذا السائق. يُضاف بانتظار التسجيل ولا يُسجَّل حضوره تلقائيًا، ويُحفظ السبب في تدقيق النظام.', 'warn'),
+        ui.labeled('بطاقة الطالب أو رقمه', h('div', { className: 'input-action' }, [
+          input,
+          h('button', {
+            className: 'btn', type: 'button', text: 'الكاميرا',
+            onClick: function () { ui.openCamera('مسح بطاقة الطالب', function (text) { input.value = text; }); }
+          })
+        ])),
+        ui.labeled('سبب الإضافة', reason)
+      ]), [
+        h('button', { className: 'btn', type: 'button', text: 'رجوع', onClick: function () { inner.close(); } }),
+        save
+      ], { narrow: true });
     }
 
     function confirmTrip(trip) {

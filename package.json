@@ -1,6 +1,6 @@
 {
   "name": "school-attendance-v36",
-  "version": "3.6.0",
+  "version": "3.6.1",
   "private": true,
   "type": "module",
   "description": "نظام الحضور والانصراف المدرسي 3.6 — Google Apps Script + Google Sheets",

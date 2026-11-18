@@ -1,10 +1,10 @@
 # PROJECT_MAP — نظام الحضور والانصراف المدرسي (v3.6)
 
 > **الحالة:** **IMPLEMENTED & VERIFIED (محليًا)** — نظام Apps Script + تطبيق Windows سطح مكتب، والتحقق الآلي كامل.
-> **الإصدار:** `3.6.0` • **وقت التشغيل:** Google Apps Script V8 + Electron 45 (Windows x64) • **قاعدة البيانات:** Google Sheets + مخزن محلي.
+> **الإصدار:** `3.6.1` • **وقت التشغيل:** Google Apps Script V8 + Electron 45 (Windows x64) • **قاعدة البيانات:** Google Sheets + مخزن محلي.
 > **تاريخ الأساس:** 2026-11-07 (Asia/Riyadh، UTC+03:00).
 > **مصدر المتطلبات:** وثيقة نظام الحضور والانصراف 3.6 (المرجع 3.5) + متطلبات سطح المكتب والمزامنة.
-> **آخر تحقق:** `npm run verify` = OK • `npm test` = 124/124 ناجح (74 GAS + 50 سطح مكتب).
+> **آخر تحقق:** `npm run verify` = OK • `npm test` = 145/145 ناجح (77 GAS + 68 سطح مكتب).
 
 ---
 
@@ -73,9 +73,13 @@ openTrip(driver, mode)
   ├─ المناوب (gate) يفتح بالبطاقة/الرقم لأنه لا يملك drivers.manage
   └─ DRAFT → resume إن وُجدت مسودة مطابقة (نفس اليوم/السائق/النوع)
 
+addTripStudent(tripId, input, reason)
+  ├─ للطالب غير المرتبط بالسائق: سبب مطلوب ويدخل التدقيق
+  └─ يُضاف pending فقط؛ تسجيله يبقى عبر scanTrip
+
 scanTrip(tripId, input, choice, reason)
   ├─ choice = scan | guardian
-  ├─ يتحقق: السائق نشط، الطالب مرتبط به، حالة اليوم مناسبة
+  ├─ يتحقق: السائق نشط، الطالب مرتبط به أو مضاف صراحة، حالة اليوم مناسبة
   └─ pending → scanned | guardian (أو duplicate)
 
 unscanTrip(tripId, studentId) → pending
@@ -265,7 +269,7 @@ runNow
 
 ---
 
-## [ACTION_POLICY] — 40 إجراءً
+## [ACTION_POLICY] — 41 إجراءً
 
 | الإجراء | عام | قفل | idempotent | صلاحية |
 |---|---:|---:|---:|---|
@@ -281,7 +285,7 @@ runNow
 | `saveDriver`, `deleteDriver` | ✘ | ✔ | ✘ | `drivers.manage` |
 | `issueCard`, `revokeCard` | ✘ | ✔ | ✘ | `cards` |
 | `getCards` | ✘ | ✘ | ✘ | `cards` |
-| `openTrip`, `scanTrip`, `unscanTrip`, `confirmTrip`, `cancelTrip` | ✘ | ✔ | ✔ | `journeys` |
+| `openTrip`, `addTripStudent`, `scanTrip`, `unscanTrip`, `confirmTrip`, `cancelTrip` | ✘ | ✔ | ✔ | `journeys` |
 | `getTrips`, `getTrip` | ✘ | ✘ | ✘ | `journeys.read` |
 | `getReport` | ✘ | ✘ | ✘ | `reports` |
 | `getSettings`, `getDatabaseStatus` | ✘ | ✘ | ✘ | `settings` |
@@ -331,11 +335,11 @@ runNow
 | `auth.test.js` | 13 | كلمة المرور، البطاقة، SSO، القفل، الجلسات، الأدوار، تغيير الكلمة مرة واحدة |
 | `cards.test.js` | 11 | الإصدار، الإلغاء، البصمات، الأنواع، الصلاحيات، بطاقات 3.5 |
 | `attendance.test.js` | 9 | الحضور/الانصراف، التصحيح، الإغلاق، الثبات، الصلاحيات |
-| `trips.test.js` | 12 | الفتح، المسح، التراجع، التأكيد المزدوج، الإلغاء، التعارض |
+| `trips.test.js` | 13 | الفتح، المسح، التراجع، التأكيد المزدوج، الإلغاء، التعارض، إضافة طالب غير مرتبط |
 | `reports.test.js` | 5 | الأنواع الثمانية، الفترة، التصفية، النسب |
 | `backup.test.js` | 5 | الإنشاء، التقليم، الاستعادة، التراجع، الاحتفاظ |
 | `migration.test.js` | 6 | الأعمدة، رموز 3.5، الرحلات، التكرار، الأمان |
-| `contract.test.js` | 11 | 40 إجراءً، العقد، الصلاحيات، الأسرار، عقد UI، منع الحقن |
+| `contract.test.js` | 13 | 41 إجراءً، العقد، الصلاحيات، الأسرار، عقد UI، منع الحقن، التقويم، باركود جماعي |
 | `desktop/test/hlc.test.mjs` | 2 | ترتيب HLC والانحراف الزمني |
 | `desktop/test/secrets.test.mjs` | 4 | DPAPI/AES-GCM، العبث، الحذف، التحقق |
 | `desktop/test/store.test.mjs` | 4 | هوية الجهاز، التقاط التغييرات، الحفظ الذري، الاستبدال |
@@ -346,7 +350,7 @@ runNow
 | `desktop/test/packaging.test.mjs` | 4 | اكتمال حزمة asar، `app-src`، تحليل كل سكربتات التشغيل والواجهة، أهداف x64 |
 | `desktop/test/elevation.test.mjs` | 8 | بوابة موافقة UAC: nonce، الصلاحية الزمنية، حماية مجلد الموافقة |
 | `desktop/test/update.test.mjs` | 7 | مقارنة الإصدارات، فحص البيان (https/exe/sha256)، التنزيل والتحقق ورفض الملف المخالف |
-| **الإجمالي** | **142** | **كل المسارات أعلاه** |
+| **الإجمالي** | **145** | **كل المسارات أعلاه** |
 
 `npm run verify` يفحص أيضًا: صياغة كل ملفات `.gs`، اكتمال `include` في `Index.html`،
 أن كل إجراء مستدعى من الواجهة معلن، وأن كل إجراء معلن (عدا `ping`) مستدعى، وغياب placeholders،
@@ -371,8 +375,8 @@ runNow
 
 1. `npm --prefix desktop install` ثم `npm run desktop:dist`.
 2. المخرجات في `dist-desktop`:
-   - `School-Attendance-Setup-3.6.0-x64.exe` (مثبّت NSIS).
-   - `School-Attendance-Portable-3.6.0-x64.exe` (محمول، بلا تثبيت).
+   - `School-Attendance-Setup-3.6.1-x64.exe` (مثبّت NSIS).
+   - `School-Attendance-Portable-3.6.1-x64.exe` (محمول، بلا تثبيت).
 3. التثبيت أو تشغيل المحمول. بيانات المحمول في `SchoolAttendanceData` بجوار الملف،
    وبيانات المثبّت في `%APPDATA%\<app>\data`.
 4. أول تشغيل: «تهيئة مدرسة جديدة» أو «الانضمام إلى جهاز» بمفتاح المزامنة.
@@ -407,6 +411,14 @@ runNow
 ---
 
 ## [CHANGELOG]
+
+### 3.6.1 — 2026-11-18
+- التقويم الهجري (أم القرى) بزر واحد في الشريط العلوي، دون تغيير التخزين الميلادي.
+- طباعة باركود جماعية لكل الطلاب النشطين: الأرقام فقط على الملصق والرمز يشفّر `STU-####`.
+- إضافة طالب غير مرتبط بالسائق إلى رحلة مفتوحة بسبب مسجّل في التدقيق.
+- تحديث التطبيق عن بُعد: فحص `update.json` عند الإقلاع، تنزيل المثبّت بالتحقق `sha256`، وتشغيله فوق الإصدار القديم دون فقدان البيانات.
+- ربط حساب Google الشخصي (OAuth/PKCE) لرفع النسخ إلى Drive بصلاحية `drive.file`.
+- 145 اختبارًا + فحص تحقق ساكن.
 
 ### 3.6.0 — 2026-11-07
 - إعادة بناء الخادم حول `api()` واحد و40 إجراءً معلنًا.

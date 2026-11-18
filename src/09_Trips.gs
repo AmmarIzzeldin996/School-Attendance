@@ -110,6 +110,46 @@ function openTrip_(ctx, payload) {
   return { trip: publicTrip_(trip), resumed: false };
 }
 
+// إضافة طالب غير مرتبط بالسائق إلى رحلة مفتوحة: بسبب مطلوب، ويُسجَّل في تاريخ الرحلة والتدقيق.
+function addTripStudent_(ctx, payload) {
+  var trip = requireDraftTrip_(payload.tripId);
+  if (trip.status !== TRIP_DRAFT_) fail_('CONFLICT', 'الرحلة ليست مسودة مفتوحة.');
+  var driver = assertDriverActive_(trip);
+  var reason = cleanText_(payload.reason || '', 200);
+  if (reason.length < 3) fail_('VALIDATION', 'سبب إضافة الطالب مطلوب (3 أحرف على الأقل).');
+  var resolved = resolveStudentInput_(payload.input);
+  var student = resolved.student;
+  var items = tripItems_(trip);
+  if (items.some(function (entry) { return normalizeId_(entry.id) === normalizeId_(student.id); })) {
+    fail_('CONFLICT', 'الطالب مضاف إلى هذه الرحلة بالفعل.');
+  }
+  var day = ensureDay_(ctx.account.username).day;
+  if (!day) fail_('DAY_NOT_OPEN', ERROR_MESSAGES_.DAY_NOT_OPEN);
+  if (trip.mode === 'in' && day.closed) fail_('DAY_CLOSED', ERROR_MESSAGES_.DAY_CLOSED);
+  var record = readDayRows_(day).filter(function (row) {
+    return normalizeId_(row.id) === normalizeId_(student.id);
+  })[0];
+  if (!record) fail_('CONFLICT', 'الطالب غير مدرج في سجل اليوم.');
+  if (trip.mode === 'in' && record.inAt) fail_('ALREADY_CHECKED_IN', ERROR_MESSAGES_.ALREADY_CHECKED_IN);
+  if (trip.mode === 'out') {
+    if (!record.inAt) fail_('NOT_CHECKED_IN', ERROR_MESSAGES_.NOT_CHECKED_IN);
+    if (record.outAt) fail_('ALREADY_CHECKED_OUT', ERROR_MESSAGES_.ALREADY_CHECKED_OUT);
+  }
+  items.push({ id: record.id, name: record.name, classroom: record.classroom, state: 'pending', method: '', at: '' });
+  trip.items = JSON.stringify(items);
+  trip.revision = Number(trip.revision || 0) + 1;
+  trip.lastRequestId = ctx.requestId || '';
+  trip.history = JSON.stringify(tripHistory_(trip, 'إضافة طالب للرحلة', student.name + ' | ' + reason, ctx.account.username));
+  updateRow_('Journeys', trip._row, trip);
+  if (resolved.card) touchCard_(resolved.card);
+  audit_(ctx, 'إضافة طالب إلى رحلة', {
+    targetType: 'trip', targetId: trip.id, reason: reason,
+    details: driver.code + ' | ' + student.name + ' (' + student.id + ')',
+    after: { status: TRIP_DRAFT_, total: items.length }
+  });
+  return { trip: publicTrip_(trip), added: true };
+}
+
 function requireDraftTrip_(tripId) {
   var trip = findTrip_(tripId);
   if (!trip) fail_('NOT_FOUND', 'الرحلة غير موجودة.');
@@ -139,7 +179,10 @@ function scanTrip_(ctx, payload) {
     throw error;
   }
   if (resolved.method === 'manual' && !reason) fail_('VALIDATION', 'سبب الإدخال اليدوي مطلوب.');
-  if (driverStudentIds_(driver).indexOf(normalizeId_(resolved.student.id)) < 0) {
+  var items = tripItems_(trip);
+  var item = items.filter(function (entry) { return normalizeId_(entry.id) === normalizeId_(resolved.student.id); })[0];
+  // الطالب غير المرتبط بالسائق يُقبل فقط إذا أُضيف صراحة لهذه الرحلة عبر addTripStudent.
+  if (!item && driverStudentIds_(driver).indexOf(normalizeId_(resolved.student.id)) < 0) {
     fail_('PERMISSION_DENIED', 'الطالب غير مرتبط بهذا السائق.');
   }
   var day = ensureDay_(ctx.account.username).day;
@@ -155,8 +198,6 @@ function scanTrip_(ctx, payload) {
     if (record.outAt) fail_('ALREADY_CHECKED_OUT', ERROR_MESSAGES_.ALREADY_CHECKED_OUT);
   }
   var method = choice === 'guardian' ? 'guardian' : (resolved.method === 'manual' ? 'manual' : 'driver');
-  var items = tripItems_(trip);
-  var item = items.filter(function (entry) { return normalizeId_(entry.id) === normalizeId_(resolved.student.id); })[0];
   if (!item) fail_('PERMISSION_DENIED', 'الطالب ليس ضمن طلاب الرحلة.');
   if (item.state !== 'pending') return { trip: publicTrip_(trip), duplicate: true };
   item.state = method === 'guardian' ? 'guardian' : 'scanned';

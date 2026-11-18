@@ -22,6 +22,7 @@ var ACTION_HANDLERS_ = {
   revokeCard: revokeCard_,
   getCards: getCards_,
   openTrip: openTrip_,
+  addTripStudent: addTripStudent_,
   scanTrip: scanTrip_,
   unscanTrip: unscanTrip_,
   confirmTrip: confirmTrip_,

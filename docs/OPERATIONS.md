@@ -169,8 +169,8 @@ npm.cmd run desktop:dist
 
 | الملف | الاستخدام |
 |---|---|
-| `School-Attendance-Setup-3.6.0-x64.exe` | مثبّت NSIS (المستخدم الحالي، بلا صلاحيات مدير) |
-| `School-Attendance-Portable-3.6.0-x64.exe` | نسخة محمولة تعمل من أي مجلد أو USB |
+| `School-Attendance-Setup-3.6.1-x64.exe` | مثبّت NSIS (المستخدم الحالي، بلا صلاحيات مدير) |
+| `School-Attendance-Portable-3.6.1-x64.exe` | نسخة محمولة تعمل من أي مجلد أو USB |
 | `win-unpacked/` | نسخة غير محزومة للفحص السريع |
 
 - البيانات تُشغَّل موقّعة بالشهادة الداخلية عند البناء عبر
@@ -216,7 +216,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\build-desktop-signed.p
    ```
 3. تحقّق:
    ```powershell
-   Get-AuthenticodeSignature '.\dist-desktop\School-Attendance-Setup-3.6.0-x64.exe' |
+   Get-AuthenticodeSignature '.\dist-desktop\School-Attendance-Setup-3.6.1-x64.exe' |
      Format-List Status, StatusMessage, SignerCertificate
    ```
 

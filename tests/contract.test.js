@@ -326,8 +326,7 @@ describe('api contract', () => {
     expect(index).toContain('SA.boot()');
   });
 
-  it('wires the calendar toggle and formats dates through one helper', () => {
-    const srcDir = fileURLToPath(new URL('../src/', import.meta.url));
+  it('wires the calendar toggle and formats dates through one helper', () => {    const srcDir = fileURLToPath(new URL('../src/', import.meta.url));
     const app = readFileSync(srcDir + 'ui_App.html', 'utf8');
     expect(readFileSync(srcDir + 'Index.html', 'utf8')).toContain('calendarToggle');
     expect(app).toContain('islamic-umalqura');
@@ -336,5 +335,25 @@ describe('api contract', () => {
     ['ui_Home.html', 'ui_Trips.html', 'ui_Reports.html'].forEach((name) => {
       expect(readFileSync(srcDir + name, 'utf8'), name).toContain('ui.fmtDate(');
     });
+  });
+
+  it('prints all student barcodes with digits-only labels and a STU- code', () => {
+    const srcDir = fileURLToPath(new URL('../src/', import.meta.url));
+    const students = readFileSync(srcDir + 'ui_Students.html', 'utf8');
+    expect(students).toContain("text: 'طباعة كل الباركودات'");
+    expect(students).toContain('printing-barcodes');
+    expect(students).toContain("qr.addData('STU-' + digits)");
+    expect(students).toContain("text: digits");
+    expect(readFileSync(srcDir + 'ui_Styles.html', 'utf8')).toContain('.barcode-label');
+  });
+
+  it('wires adding an unrelated student to an open trip', () => {
+    const srcDir = fileURLToPath(new URL('../src/', import.meta.url));
+    const trips = readFileSync(srcDir + 'ui_Trips.html', 'utf8');
+    expect(trips).toContain("api('addTripStudent'");
+    expect(trips).toContain('إضافة طالب غير مرتبط');
+    const config = readFileSync(srcDir + '01_Config.gs', 'utf8');
+    expect(config).toContain("addTripStudent: { public: false, lock: true, permission: 'journeys'");
+    expect(readFileSync(srcDir + '12_Entry.gs', 'utf8')).toContain('addTripStudent: addTripStudent_');
   });
 });

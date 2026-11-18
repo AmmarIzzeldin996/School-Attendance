@@ -220,6 +220,39 @@ describe('trips', () => {
     expect(ok(app, 'confirmTrip', { tripId: out.trip.id }, 'req-trip-closed-06').applied).toBe(1);
   });
 
+  it('adds an unrelated student to a draft trip with a reason, then scans and confirms', () => {
+    const app = base();
+    const opened = ok(app, 'openTrip', { mode: 'in', driver: '9001' }, 'req-trip-add-0001');
+    const tripId = opened.trip.id;
+
+    // 1003 غير مرتبط بالسائق: المسح العادي مرفوض، والإضافة تتطلب سببًا.
+    expect(fail(app, 'scanTrip', { tripId, input: '1003', reason: 'اختبار' }, 'req-trip-add-0002').code).toBe('PERMISSION_DENIED');
+    expect(fail(app, 'addTripStudent', { tripId, input: '1003' }, 'req-trip-add-0003').code).toBe('VALIDATION');
+    expect(fail(app, 'addTripStudent', { tripId, input: '9999', reason: 'اختبار' }, 'req-trip-add-0004').code).toBe('STUDENT_NOT_FOUND');
+    expect(fail(app, 'addTripStudent', { tripId, input: '1001', reason: 'اختبار' }, 'req-trip-add-0005').code).toBe('CONFLICT');
+
+    const added = ok(app, 'addTripStudent', { tripId, input: '1003', reason: 'طلب ولي الأمر' }, 'req-trip-add-0006');
+    expect(added.added).toBe(true);
+    expect(added.trip.counts).toMatchObject({ total: 3, done: 0, pending: 3 });
+    expect(itemOf(added.trip, '1003')).toMatchObject({ state: 'pending', method: '', at: '' });
+    expect(fail(app, 'addTripStudent', { tripId, input: '1003', reason: 'مكرر' }, 'req-trip-add-0007').code).toBe('CONFLICT');
+
+    const scanned = ok(app, 'scanTrip', { tripId, input: '1003', reason: 'طلب ولي الأمر' }, 'req-trip-add-0008');
+    expect(itemOf(scanned.trip, '1003')).toMatchObject({ state: 'scanned', method: 'manual' });
+
+    const confirmed = ok(app, 'confirmTrip', { tripId }, 'req-trip-add-0009');
+    expect(confirmed.applied).toBe(1);
+    const day = ok(app, 'getDay', {});
+    expect(day.records.find((record) => record.id === '1003').inJourney).toBe(tripId);
+
+    const audit = ok(app, 'getAudit', { limit: 100 });
+    const entry = audit.find((row) => row.action === 'إضافة طالب إلى رحلة');
+    expect(entry.reason).toBe('طلب ولي الأمر');
+    expect(entry.details).toContain('1003');
+
+    expect(fail(app, 'addTripStudent', { tripId, input: '1003', reason: 'بعد التأكيد' }, 'req-trip-add-0010').code).toBe('CONFLICT');
+  });
+
   it('splits trip permissions between managers, viewers, and unrelated roles', () => {
     const app = base();
     const viewer = createUser(app, { username: 'view_trips', role: 'viewer' });

@@ -1,5 +1,5 @@
 // 01_Config.gs — ثوابت النظام وخريطة الصلاحيات. لا منطق أعمال هنا.
-var APP_VERSION_ = '3.6.0';
+var APP_VERSION_ = '3.6.1';
 var TIMEZONE_ = 'Asia/Riyadh';
 var SESSION_IDLE_MS_ = 30 * 60 * 1000;
 var SESSION_ABSOLUTE_MS_ = 8 * 60 * 60 * 1000;
@@ -60,6 +60,7 @@ var ACTION_POLICY_ = {
   revokeCard: { public: false, lock: true, permission: 'cards' },
   getCards: { public: false, lock: false, permission: 'cards' },
   openTrip: { public: false, lock: true, permission: 'journeys', idempotent: true },
+  addTripStudent: { public: false, lock: true, permission: 'journeys', idempotent: true },
   scanTrip: { public: false, lock: true, permission: 'journeys', idempotent: true },
   unscanTrip: { public: false, lock: true, permission: 'journeys', idempotent: true },
   confirmTrip: { public: false, lock: true, permission: 'journeys', idempotent: true },

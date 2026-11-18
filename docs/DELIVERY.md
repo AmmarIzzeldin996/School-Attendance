@@ -1,6 +1,6 @@
 # DELIVERY — تسليم نظام الحضور والانصراف 3.6
 
-**تاريخ التسليم:** 2026-11-09 • **الإصدار:** `3.6.0`
+**تاريخ التسليم:** 2026-11-18 • **الإصدار:** `3.6.1`
 **المنصات:** Google Apps Script (ويب) + تطبيق Windows 10/11 x64
 
 ---
@@ -11,8 +11,8 @@
 
 | الملف | الحجم | SHA-256 |
 |---|---:|---|
-| `School-Attendance-Setup-3.6.0-x64.exe` | 122,773,216 بايت | `96A15CB55052E790251415E2AF6535CBF44B45CEA781E6AD60418247DA52E65D` |
-| `School-Attendance-Portable-3.6.0-x64.exe` | 111,223,080 بايت | `D4C07DDEB14BEDD45205C183A02675E3F4C21151E94F4288183294515AB15AFF` |
+| `School-Attendance-Setup-3.6.1-x64.exe` | 122,779,032 بايت | `90ECA2139A62EFCED2C9C73C6CB802880B3B8DD732539740699FE4994E3569A2` |
+| `School-Attendance-Portable-3.6.1-x64.exe` | 111,250,592 بايت | `5421F8C91028A0598284F393D5D9C550432865E922072EDDD8374E9964D85487` |
 
 - **التوقيع الرقمي:** موقّع بالشهادة الداخلية `School Attendance Internal Code Signing`،
   والحالة على جهاز البناء **`Valid`** (`Signature verified`).
@@ -34,8 +34,8 @@
 ### التحقق من السلامة
 
 ```powershell
-Get-FileHash '.\dist-desktop\School-Attendance-Setup-3.6.0-x64.exe' -Algorithm SHA256
-Get-AuthenticodeSignature '.\dist-desktop\School-Attendance-Setup-3.6.0-x64.exe'
+Get-FileHash '.\dist-desktop\School-Attendance-Setup-3.6.1-x64.exe' -Algorithm SHA256
+Get-AuthenticodeSignature '.\dist-desktop\School-Attendance-Setup-3.6.1-x64.exe'
 ```
 
 ---
@@ -125,7 +125,7 @@ npm.cmd --prefix desktop run import-students -- --file "E:\projects\بيانات
 | الفحص | النتيجة |
 |---|---|
 | `npm.cmd run verify` | OK — 13 ملف خادم، 7 ملفات واجهة، 40 إجراءً |
-| `npm.cmd test` | **142/142** ناجح (74 GAS + 68 سطح مكتب) |
+| `npm.cmd test` | **145/145** ناجح (77 GAS + 68 سطح مكتب) |
 | حزمة asar | تحتوي كل وحدات التشغيل بما فيها `data/**/*` |
 | تحليل السكربتات | كل ملفات التشغيل والواجهة تُحلَّل بلا أخطاء |
 | المحمول النهائي | يقلع، ينشئ `SchoolAttendanceData`، ويخدم `/health` و`/setup/status`، ويحمّل الواجهة الجديدة |
