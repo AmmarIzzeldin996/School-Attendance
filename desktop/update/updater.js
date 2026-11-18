@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
-const DEFAULT_MANIFEST_URL = 'https://raw.githubusercontent.com/Ammarlzzeldin996/School-Attendance/main/update.json';
+const DEFAULT_MANIFEST_URL = 'https://raw.githubusercontent.com/AmmarIzzeldin996/School-Attendance/main/docs/update/update.json';
 
 function compareVersions(a, b) {
   const pa = String(a || '').split('.');

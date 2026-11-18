@@ -17,10 +17,10 @@
    ```
    وضعها في `sha256` (أدنى بسيط، وتُرفض الحزم المخالفة تلقائيًا).
 4. عدّل `update.json` أعلاه (الإصدار + رابط Release + الملاحظات) وارفعه
-   في **جذر المستودع**.
+   في مساره `docs/update/update.json`.
 
 المسار الافتراضي الذي يقرؤه التطبيق:
-`https://raw.githubusercontent.com/Ammarlzzeldin996/School-Attendance/main/update.json`
+`https://raw.githubusercontent.com/AmmarIzzeldin996/School-Attendance/main/docs/update/update.json`
 ويمكن تغييره بمتغير البيئة `SCHOOL_ATTENDANCE_UPDATE_URL`.
 
 ## ما يفعله المشرف في المدرسة (دون حذف القديم)
