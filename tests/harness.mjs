@@ -420,6 +420,7 @@ export function createUser(app, options = {}) {
     name: options.name || 'مستخدم اختبار',
     email: options.email || `${username}@example.com`,
     role: options.role || 'gate',
+    classrooms: options.classrooms || [],
     active: options.active !== false,
     password
   });

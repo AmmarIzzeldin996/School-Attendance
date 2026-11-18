@@ -13,7 +13,7 @@ describe('smoke', () => {
 
     const ping = app.api('', 'ping', {});
     expect(ping.success, JSON.stringify(ping)).toBe(true);
-    expect(ping.data.version).toBe('3.6.1');
+    expect(ping.data.version).toBe('3.6.2');
 
     const day = ok(app, 'getDay', {});
     expect(day.records).toEqual([]);

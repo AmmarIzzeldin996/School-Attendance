@@ -1,6 +1,6 @@
 # DELIVERY — تسليم نظام الحضور والانصراف 3.6
 
-**تاريخ التسليم:** 2026-11-18 • **الإصدار:** `3.6.1`
+**تاريخ التسليم:** 2026-11-18 • **الإصدار:** `3.6.2`
 **المنصات:** Google Apps Script (ويب) + تطبيق Windows 10/11 x64
 
 ---
@@ -11,8 +11,8 @@
 
 | الملف | الحجم | SHA-256 |
 |---|---:|---|
-| `School-Attendance-Setup-3.6.1-x64.exe` | 122,779,952 بايت | `4C7758120AE200FC1867CCC294525FF799F7A98503A1258C286D57C405480139` |
-| `School-Attendance-Portable-3.6.1-x64.exe` | 111,262,944 بايت | `0209ECB553BF0BFD35E2A00354395A6962258BA563C5F534FD35BB9BF5862002` |
+| `School-Attendance-Setup-3.6.2-x64.exe` | 122,780,672 بايت | `4B59B50C60E83B14BFF4F29F42CF2415AF9884CEAD47103571D1CD05DA9FC2E1` |
+| `School-Attendance-Portable-3.6.2-x64.exe` | 111,233,680 بايت | `11A447846146C3A219FA27087925159F5C14D05FB3F70BAD82B09F39F78D4075` |
 
 - **التوقيع الرقمي:** موقّع بالشهادة الداخلية `School Attendance Internal Code Signing`،
   والحالة على جهاز البناء **`Valid`** (`Signature verified`).
@@ -34,8 +34,8 @@
 ### التحقق من السلامة
 
 ```powershell
-Get-FileHash '.\dist-desktop\School-Attendance-Setup-3.6.1-x64.exe' -Algorithm SHA256
-Get-AuthenticodeSignature '.\dist-desktop\School-Attendance-Setup-3.6.1-x64.exe'
+Get-FileHash '.\dist-desktop\School-Attendance-Setup-3.6.2-x64.exe' -Algorithm SHA256
+Get-AuthenticodeSignature '.\dist-desktop\School-Attendance-Setup-3.6.2-x64.exe'
 ```
 
 ---
@@ -124,8 +124,8 @@ npm.cmd --prefix desktop run import-students -- --file "E:\projects\بيانات
 
 | الفحص | النتيجة |
 |---|---|
-| `npm.cmd run verify` | OK — 13 ملف خادم، 7 ملفات واجهة، 40 إجراءً |
-| `npm.cmd test` | **146/146** ناجح (77 GAS + 69 سطح مكتب) |
+| `npm.cmd run verify` | OK — 13 ملف خادم، 7 ملفات واجهة، 41 إجراءً |
+| `npm.cmd test` | **149/149** ناجح (81 GAS + 68 سطح مكتب) |
 | حزمة asar | تحتوي كل وحدات التشغيل بما فيها `data/**/*` |
 | تحليل السكربتات | كل ملفات التشغيل والواجهة تُحلَّل بلا أخطاء |
 | المحمول النهائي | يقلع، ينشئ `SchoolAttendanceData`، ويخدم `/health` و`/setup/status`، ويحمّل الواجهة الجديدة |
@@ -151,5 +151,6 @@ npm.cmd --prefix desktop run import-students -- --file "E:\projects\بيانات
 | شبكة المدرسة الفعلية | اختبار التقارب آلي؛ يلزم UAT على 3–5 أجهزة حقيقية |
 | مزامنة LAN | تعمل عبر HTTP داخل شبكة موثوقة؛ لا تُفتح على الإنترنت |
 | مفتاح المزامنة | مزاوجة يدوية؛ من يملكه يمكنه استنساخ قاعدة الجهاز |
+| نطاق الفصول | يفلتر الطلاب واليوم والتقارير فقط؛ الرحلات والبطاقات والتدقيق على مستوى الصلاحية |
 
 قائمة UAT الكاملة في `docs/OPERATIONS.md §18`.

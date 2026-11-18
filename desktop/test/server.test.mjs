@@ -162,7 +162,7 @@ describe('desktop HTTP server', () => {
       body: JSON.stringify({ action: 'ping', token: '', payload: {} })
     }).then((response) => response.json());
     expect(ping.success).toBe(true);
-    expect(ping.data.version).toBe('3.6.1');
+    expect(ping.data.version).toBe('3.6.2');
   });
 
   it('exposes desktop status, database download, and sync status', async () => {

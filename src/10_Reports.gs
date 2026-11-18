@@ -29,6 +29,7 @@ function getReport_(ctx, payload) {
       .filter(function (record) { return dates[record.date]; });
   }
   if (payload.classroom) records = records.filter(function (record) { return record.classroom === payload.classroom; });
+  records = scopeRows_(ctx.account, records);
   if (payload.studentId) {
     var studentId = normalizeId_(payload.studentId);
     records = records.filter(function (record) { return normalizeId_(record.id) === studentId; });
@@ -144,13 +145,13 @@ function getReport_(ctx, payload) {
       trips = trips.filter(function (trip) { return normalizeId_(trip.driverCode) === driverCode; });
     }
     rows = trips.map(function (trip) {
-      var items = tripItems_(trip);
+      var items = scopeRows_(ctx.account, tripItems_(trip));
       var applied = items.filter(function (item) { return item.state === 'scanned' || item.state === 'guardian'; });
       return {
         tripId: trip.id, date: trip.date, driverCode: trip.driverCode, driverName: trip.driverName,
         mode: trip.mode, total: items.length, applied: applied.length, confirmedAt: trip.confirmedAt
       };
-    }).sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+    }).filter(function (row) { return row.total > 0; }).sort(function (a, b) { return a.date < b.date ? 1 : -1; });
   }
   var rowsLimit = 20000;
   if (rows.length > rowsLimit) fail_('VALIDATION', 'الناتج كبير جدًا؛ ضيّق الفترة أو استخدم تصفية.');

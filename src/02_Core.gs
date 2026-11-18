@@ -183,6 +183,24 @@ function saveAccount_(account) {
   PropertiesService.getScriptProperties().setProperty('ACCOUNT_' + account.id, JSON.stringify(account));
 }
 
+// نطاق الصفوف: فصول الحساب المسموحة. فارغ = كل الفصول، والمشرف يرى الكل دائمًا.
+function scopeClassrooms_(account) {
+  if (!account || account.role === 'admin') return [];
+  return (account.classrooms || []).map(function (room) { return String(room || '').trim(); })
+    .filter(function (room) { return !!room; });
+}
+
+function inScope_(account, classroom) {
+  var scope = scopeClassrooms_(account);
+  if (!scope.length) return true;
+  return scope.indexOf(String(classroom || '').trim()) >= 0;
+}
+
+function scopeRows_(account, rows) {
+  if (!scopeClassrooms_(account).length) return rows;
+  return rows.filter(function (row) { return inScope_(account, row.classroom); });
+}
+
 function publicAccount_(account) {
   return {
     id: account.id,
@@ -191,6 +209,7 @@ function publicAccount_(account) {
     email: account.email || '',
     role: account.role,
     roleLabel: ROLE_LABELS_[account.role] || 'دور غير معروف',
+    classrooms: (account.classrooms || []).slice(),
     active: !!account.active,
     mustChange: !!account.mustChange && !account.passwordChangedAt,
     permissions: permissionsFor_(account),

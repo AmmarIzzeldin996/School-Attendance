@@ -1,6 +1,6 @@
 {
-  "version": "3.6.1",
-  "url": "https://github.com/AmmarIzzeldin996/School-Attendance/releases/download/v3.6.1/School-Attendance-Setup-3.6.1-x64.exe",
-  "notes": "تقويم هجري/ميلادي بزر واحد، طباعة باركود الطلاب جماعيًا، إضافة طالب غير مرتبط للرحلة، فحص تحديث تلقائي",
-  "sha256": "4c7758120ae200fc1867ccc294525ff799f7a98503a1258c286d57c405480139"
+  "version": "3.6.2",
+  "url": "https://github.com/AmmarIzzeldin996/School-Attendance/releases/download/v3.6.2/School-Attendance-Setup-3.6.2-x64.exe",
+  "notes": "عزل فصول لكل حساب، تقويم هجري/ميلادي بزر واحد، طباعة باركود الطلاب جماعيًا، إضافة طالب غير مرتبط للرحلة، فحص تحديث تلقائي",
+  "sha256": "4b59b50c60e83b14bff4f29f42cf2415af9884cead47103571d1cd05da9fc2e1"
 }

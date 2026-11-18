@@ -274,7 +274,7 @@ describe('api contract', () => {
     expect(JSON.stringify(users)).not.toContain('passwordHash');
     users.forEach((user) => {
       expect(Object.keys(user).sort()).toEqual([
-        'active', 'email', 'id', 'isOwner', 'mustChange', 'name', 'permissions', 'role', 'roleLabel', 'username'
+        'active', 'classrooms', 'email', 'id', 'isOwner', 'mustChange', 'name', 'permissions', 'role', 'roleLabel', 'username'
       ]);
     });
 

@@ -31,7 +31,7 @@ function publicStudent_(student) {
 }
 
 function getStudents_(ctx) {
-  return readTable_('Students').map(publicStudent_);
+  return scopeRows_(ctx.account, readTable_('Students')).map(publicStudent_);
 }
 
 function saveStudent_(ctx, payload) {
@@ -39,9 +39,15 @@ function saveStudent_(ctx, payload) {
   var originalId = payload.originalId ? normalizeId_(payload.originalId) : '';
   var index = originalId ? students.findIndex(function (student) { return normalizeId_(student.id) === originalId; }) : -1;
   if (originalId && index < 0) fail_('NOT_FOUND', 'الطالب غير موجود.');
+  if (index >= 0 && !inScope_(ctx.account, students[index].classroom)) {
+    fail_('PERMISSION_DENIED', 'الطالب خارج نطاق فصولك.');
+  }
   if (originalId && normalizeId_(payload.id) !== originalId) fail_('VALIDATION', 'رقم الطالب ثابت؛ يمكن تعديل بقية البيانات.');
   var others = students.filter(function (student, position) { return position !== index; });
   var student = validateStudent_(payload, others, !!originalId);
+  if (!inScope_(ctx.account, student.classroom)) {
+    fail_('PERMISSION_DENIED', 'لا يمكنك إضافة أو نقل طالب خارج نطاق فصولك.');
+  }
   var before = index >= 0 ? publicStudent_(students[index]) : null;
   var record = index >= 0 ? students[index] : { token: '' };
   record.id = student.id;
@@ -73,6 +79,11 @@ function importStudents_(ctx, payload) {
     } catch (error) {
       var message = error && error.message ? error.message : 'بيانات غير صحيحة.';
       fail_('VALIDATION', 'السطر ' + (index + 1) + ': ' + message);
+    }
+  });
+  additions.forEach(function (item) {
+    if (!inScope_(ctx.account, item.classroom)) {
+      fail_('PERMISSION_DENIED', 'الملف يحتوي فصولًا خارج نطاقك: ' + item.classroom);
     }
   });
   appendRows_('Students', additions);

@@ -213,6 +213,7 @@
       { label: 'الاسم', value: function (row) { return row.name; } },
       { label: 'الدور', value: function (row) { return row.roleLabel; } },
       { label: 'البريد', className: 'mono', value: function (row) { return row.email || '—'; } },
+      { label: 'نطاق الفصول', value: function (row) { return row.role === 'admin' ? 'الكل (مشرف)' : ((row.classrooms || []).length ? row.classrooms.join('، ') : 'كل الفصول'); } },
       { label: 'الحالة', value: function (row) { return ui.badge(row.active ? 'نشط' : 'موقوف', row.active ? 'active' : 'inactive'); } },
       { label: 'النوع', value: function (row) { return row.isOwner ? ui.badge('المشرف الأصلي', 'info') : (row.mustChange ? ui.badge('كلمة مؤقتة', 'pending') : '—'); } },
       {
@@ -244,6 +245,7 @@
     var nameInput = h('input', { type: 'text', maxlength: 100, value: editing ? user.name : '' });
     var emailInput = h('input', { type: 'email', dir: 'ltr', maxlength: 120, value: editing ? user.email : '', placeholder: 'name@school.edu' });
     var roleSelect = ui.selectEl(ROLES, editing ? user.role : 'gate', null);
+    var classroomsInput = h('input', { type: 'text', maxlength: 400, value: editing ? (user.classrooms || []).join('، ') : '', placeholder: 'الصف الأول، الصف الثاني' });
     var activeInput = h('input', { type: 'checkbox', checked: editing ? !!user.active : true });
     var passwordInput = h('input', { type: 'password', dir: 'ltr', maxlength: 128, autocomplete: 'new-password', placeholder: editing ? 'اتركه فارغًا لعدم التغيير' : '8 خانات على الأقل' });
     var save = h('button', { className: 'btn primary', type: 'button', text: editing ? 'حفظ التعديل' : 'إضافة المستخدم' });
@@ -254,6 +256,7 @@
         name: String(nameInput.value || '').trim(),
         email: String(emailInput.value || '').trim().toLowerCase(),
         role: roleSelect.value,
+        classrooms: String(classroomsInput.value || '').split(/[،,\n]/).map(function (item) { return item.trim(); }).filter(Boolean),
         active: activeInput.checked
       };
       if (editing) payload.id = user.id;
@@ -287,6 +290,7 @@
         ui.labeled('البريد الإلكتروني', emailInput, 'اختياري، مطلوب للدخول عبر Google.'),
         ui.labeled('الدور', roleSelect)
       ]),
+      ui.labeled('نطاق الفصول', classroomsInput, 'اتركه فارغًا ليرى المستخدم كل الفصول. افصل بين الفصول بفاصلة. المشرف يرى الكل دائمًا.'),
       ui.labeled(editing ? 'كلمة مرور جديدة (اختياري)' : 'كلمة المرور المؤقتة', passwordInput, 'عند التعيين تُبطل جلسات المستخدم ويُطلب منه تغييرها عند الدخول.'),
       h('label', { className: 'check' }, [activeInput, h('span', { text: 'الحساب نشط' })])
     ]), [

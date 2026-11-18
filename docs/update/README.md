@@ -9,11 +9,11 @@
 1. ارفع الإصدار في الملفين: `package.json` و`desktop/package.json`، ثم
    `npm test` و`npm run verify`، ثم `npm --prefix desktop run dist`
    (أو التوقيع عبر `tools\build-desktop-signed.ps1`).
-2. في مستودع GitHub: Releases ← Draft a new release ← وسم `v3.6.1`
-   ← أرفق `School-Attendance-Setup-3.6.1-x64.exe` ← Publish.
+2. في مستودع GitHub: Releases ← Draft a new release ← وسم `v3.6.2`
+   ← أرفق `School-Attendance-Setup-3.6.2-x64.exe` ← Publish.
 3. احسب بصمة الملف:
    ```powershell
-   Get-FileHash .\dist-desktop\School-Attendance-Setup-3.6.1-x64.exe -Algorithm SHA256
+   Get-FileHash .\dist-desktop\School-Attendance-Setup-3.6.2-x64.exe -Algorithm SHA256
    ```
    وضعها في `sha256` (أدنى بسيط، وتُرفض الحزم المخالفة تلقائيًا).
 4. عدّل `update.json` أعلاه (الإصدار + رابط Release + الملاحظات) وارفعه
@@ -26,7 +26,7 @@
 ## ما يفعله المشرف في المدرسة (دون حذف القديم)
 
 1. «سطح المكتب ← المزامنة والنسخ الاحتياطي ← تحديث التطبيق».
-2. «فحص التحديث» ← «تنزيل التحديث 3.6.1» ← «تشغيل المثبّت».
+2. «فحص التحديث» ← «تنزيل التحديث 3.6.2» ← «تشغيل المثبّت».
 3. أغلق التطبيق عند مطالبة المثبّت. البيانات في `SchoolAttendanceData`
    أو `%APPDATA%` لا تُمس؛ سجل الدخول والإعدادات والمزامنة كما هي.
 

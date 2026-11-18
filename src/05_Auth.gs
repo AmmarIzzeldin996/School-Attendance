@@ -301,6 +301,20 @@ function saveUser_(ctx, payload) {
   if (email && all.some(function (item) { return String(item.email || '').toLowerCase() === email && (!existing || item.id !== existing.id); })) {
     fail_('CONFLICT', 'البريد الإلكتروني مربوط بحساب آخر.');
   }
+  // نطاق الصفوف: فارغ = كل الفصول. المشرف يرى الكل دائمًا.
+  var classrooms = [];
+  if (Array.isArray(payload.classrooms)) {
+    payload.classrooms.forEach(function (value) {
+      var room = cleanText_(value, 80);
+      if (room && classrooms.indexOf(room) < 0) classrooms.push(room);
+    });
+  }
+  if (classrooms.length > 30) fail_('VALIDATION', 'الحد الأقصى 30 فصلًا لكل مستخدم.');
+  var knownRooms = readTable_('Students').map(function (student) { return student.classroom; });
+  if (knownRooms.length && classrooms.some(function (room) { return knownRooms.indexOf(room) < 0; })) {
+    fail_('VALIDATION', 'أحد الفصول غير موجود في قائمة فصول الطلاب.');
+  }
+  if (payload.role === 'admin') classrooms = [];
   if (existing && isPrimaryAdmin_(existing) && (payload.role !== 'admin' || !payload.active)) {
     fail_('PERMISSION_DENIED', 'لا يمكن تعطيل المشرف الأصلي أو تخفيض صلاحياته.');
   }
@@ -318,7 +332,8 @@ function saveUser_(ctx, payload) {
   }
   var before = existing ? publicAccount_(existing) : null;
   var hash = payload.password ? passwordHash_(payload.password) : null;
-  var securityChange = !existing || existing.role !== payload.role || !!existing.active !== !!payload.active || !!hash;
+  var securityChange = !existing || existing.role !== payload.role || !!existing.active !== !!payload.active || !!hash ||
+    JSON.stringify((existing && existing.classrooms) || []) !== JSON.stringify(classrooms);
   var account = existing || {
     id: uuid_(), version: 0, createdAt: stamp_(), failed: 0, lockedUntil: 0, mustChange: true
   };
@@ -326,6 +341,7 @@ function saveUser_(ctx, payload) {
   account.name = name;
   account.email = email;
   account.role = payload.role;
+  account.classrooms = classrooms;
   account.active = payload.active;
   account.version = Number(account.version || 0) + (securityChange ? 1 : 0);
   if (hash) {

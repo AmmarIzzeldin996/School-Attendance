@@ -112,7 +112,7 @@ function getDay_(ctx, payload) {
   } else {
     day = readTable_('Days').filter(function (item) { return item.date === date; })[0] || null;
   }
-  var records = readDayRows_(day);
+  var records = scopeRows_(ctx.account, readDayRows_(day));
   return {
     date: date,
     offDay: false,
