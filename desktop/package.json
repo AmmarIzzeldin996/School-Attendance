@@ -23,6 +23,9 @@
     "electron": "45.2.3",
     "electron-builder": "26.18.0"
   },
+  "overrides": {
+    "minimatch": "^11.0.1"
+  },
   "build": {
     "appId": "sa.school.attendance.desktop",
     "productName": "نظام الحضور والانصراف",

@@ -11,8 +11,8 @@
 
 | الملف | الحجم | SHA-256 |
 |---|---:|---|
-| `School-Attendance-Setup-3.6.1-x64.exe` | 122,780,120 بايت | `D62FAEE1EA19F4767AF46461C141964F7ACB478E58FFE6DF142164DDFB7A74BD` |
-| `School-Attendance-Portable-3.6.1-x64.exe` | 111,246,672 بايت | `918E5566EA997A5EF427469F6273F363BC54883446984E333B8AF84953375C70` |
+| `School-Attendance-Setup-3.6.1-x64.exe` | 122,779,952 بايت | `4C7758120AE200FC1867CCC294525FF799F7A98503A1258C286D57C405480139` |
+| `School-Attendance-Portable-3.6.1-x64.exe` | 111,262,944 بايت | `0209ECB553BF0BFD35E2A00354395A6962258BA563C5F534FD35BB9BF5862002` |
 
 - **التوقيع الرقمي:** موقّع بالشهادة الداخلية `School Attendance Internal Code Signing`،
   والحالة على جهاز البناء **`Valid`** (`Signature verified`).
