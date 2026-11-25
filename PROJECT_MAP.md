@@ -234,7 +234,7 @@ runNow
 | 8 | إنهاء حضور اليوم | `ui_Home` | `closeDay` | `attendance` |
 | 9 | إدارة الطلاب | `ui_Students` | `getStudents`, `saveStudent` | `attendance` |
 | 10 | استيراد طلاب | `ui_Students` | `importStudents` | `attendance` |
-| 11 | إصدار بطاقة طالب (طباعة 6×6 سم) | `ui_Students` | `issueCard` | `cards` |
+| 11 | إصدار بطاقة طالب (طباعة 5.5×9 سم) | `ui_Students` | `issueCard` | `cards` |
 | 12 | عرض/إلغاء البطاقات | `ui_Students` | `getCards`, `revokeCard` | `cards` |
 | 13 | إدارة السائقين وربط الطلاب | `ui_Trips` | `getDriverAdminData`, `saveDriver`, `deleteDriver` | `trips` |
 | 14 | بطاقة سائق | `ui_Trips` | `issueCard('DRIVER')` | `cards`, `trips` |
@@ -264,7 +264,7 @@ runNow
 | 38 | نسخة سحابية مقروءة | لوحة سطح المكتب | `/desktop/backup/test`, `/desktop/backup/run` | `desktop/backup` |
 | 39 | استعادة أحدث نسخة سحابية | لوحة سطح المكتب | `/desktop/backup/import-latest` | `desktop/backup` |
 | 40 | معلومات الجهاز وتنزيل القاعدة | لوحة سطح المكتب | `/desktop/status`, `/desktop/database` | `desktop/server` |
-| 41 | بطاقة مستخدم النظام وطباعتها 6×6 سم | `ui_Settings` | `issueCard('USER')` | `cards` |
+| 41 | بطاقة مستخدم النظام وطباعتها 5.5×9 سم | `ui_Settings` | `issueCard('USER')` | `cards` |
 | 41 | استعادة كلمة مرور المشرف (بتأكيد UAC) | شاشة الدخول | IPC `desktop:recover-admin` | `desktop/main`, `desktop/lib/elevation`, `desktop/ui` |
 
 ---
@@ -418,7 +418,8 @@ runNow
 - إصلاح حزم وحدات التحديث داخل `app.asar` (كان `update/**/*` غير محزوم فتفشل المزامنة/التحديث في النسخة المثبّتة).
 - `overrides` لـ`minimatch@11.0.1` يزيل 6 تحذيرات ReDoS في أدوات البناء؛ `npm audit` = 0.
 - نطاق فصول لكل حساب مستخدم: قائمة طلاب ويوم وتقارير مفلترة، والمشرف يرى الكل، والحساب بلا نطاق يرى كل الفصول.
-- إصلاح باركود «طباعة كل الباركودات»: رمز QR يُرسم SVG متجهيًا داخل الملصق فيظهر في PDF دائمًا (كان يعتمد على صورة لم تكتمل قبل الطباعة)، مع ضبط المقاسات داخل ملصق 3 سم.
+- إصلاح باركود «طباعة كل الباركودات»: رمز QR يُطبع دائمًا، مع انتظار فك ترميز الصور.
+- توحيد تصميم البطاقات: 5.5×9 سم عمودية، خلفية بيضاء وإطار أسود خارجي، اسم المدرسة من الإعدادات ثم اسم الطالب والصف ورقمه، وصورة QR بدقة 300 DPI بقطر 4.5 سم؛ البطاقة الفردية صفحة 5.5×9 سم والجماعية 9 بطاقات لكل A4.
 - 150 اختبارًا (بينها `scoping.test.js` واختبار رسم الباركود) + فحص تحقق ساكن، ومنها تحقق آلي أن كل وحدة يستدعيها `main.js` محزومة داخل asar.
 
 ### 3.6.1 — 2026-11-18

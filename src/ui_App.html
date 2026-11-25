@@ -604,6 +604,19 @@ window.SA = window.SA || {};
       return result;
     });
   }
+  // صورة QR بدقة 300 DPI عند عرضها بالحجم المطلوب بالسنتيمترات.
+  function qrPng(qr, cm) {
+    var target = Math.ceil(cm * 300 / 2.54);
+    var margin = 4;
+    var cell = Math.max(1, Math.ceil((target - margin * 2) / qr.getModuleCount()));
+    return qr.createDataURL(cell, margin);
+  }
+  function setPrintPage(size) {
+    var id = 'printPageSize';
+    var style = document.getElementById(id);
+    if (!style) { style = document.createElement('style'); style.id = id; document.head.appendChild(style); }
+    style.textContent = '@media print { @page { size: ' + size + '; margin: 0; } }';
+  }
   function cardPrintNode(result, imageSrc) {
     var owner = String((result.card && result.card.ownerName) || '').trim();
     var name = owner;
@@ -617,7 +630,9 @@ window.SA = window.SA || {};
     } else if (result.card && result.card.type === 'USER') {
       detail = 'مستخدم النظام';
     }
+    var school = (state.settings && state.settings.schoolName) || state.config.schoolName || '';
     return h('div', { className: 'print-card' }, [
+      school ? h('div', { className: 'print-card-school', text: school }) : null,
       h('div', { className: 'print-card-name', text: name || '—' }),
       detail ? h('div', { className: 'print-card-sub', text: detail }) : null,
       imageSrc ? h('img', { className: 'print-card-qr', alt: 'رمز البطاقة', src: imageSrc }) : null
@@ -630,7 +645,7 @@ window.SA = window.SA || {};
       qr.addData(result.token);
       qr.make();
     } catch (error) { qr = null; }
-    var imageSrc = qr ? qr.createDataURL(6, 4) : '';
+    var imageSrc = qr ? qrPng(qr, 4.5) : '';
     var preview = cardPrintNode(result, imageSrc);
     preview.classList.add('card-preview');
     var printHost = h('div', { id: 'printCardHost', className: 'print-card-host' }, [cardPrintNode(result, imageSrc)]);
@@ -645,6 +660,7 @@ window.SA = window.SA || {};
     });
     var print = h('button', {
       className: 'btn', type: 'button', text: 'طباعة البطاقة', onClick: function () {
+        setPrintPage('5.5cm 9cm');
         document.body.classList.add('printing-card');
         var done = function () {
           document.body.classList.remove('printing-card');
@@ -838,6 +854,7 @@ window.SA = window.SA || {};
   ui.toast = toast; ui.openModal = openModal; ui.closeAllModals = closeAllModals; ui.confirmAction = confirmAction;
   ui.api = api; ui.showError = showError; ui.can = can; ui.setConnection = setConnection;
   ui.saveToken = saveToken; ui.clearToken = clearToken; ui.issueCardFor = issueCardFor; ui.showCardToken = showCardToken;
+  ui.qrPng = qrPng; ui.setPrintPage = setPrintPage;
   ui.openCamera = openCamera; ui.pickImage = pickImage; ui.openPasswordDialog = openPasswordDialog; ui.refreshBootstrap = refreshBootstrap;
   ui.showLogin = showLogin; ui.logout = logout; ui.applyBranding = applyBranding; ui.renderView = renderView;
   SA.boot = boot;

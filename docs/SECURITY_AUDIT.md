@@ -110,7 +110,7 @@
 - `desktop/ui/setup.html` — عدم تعبئة المفتاح تلقائيًا، توضيح المزاوجة اليدوية.
 - `desktop/package.json` / `desktop/package-lock.json` — `xlsx@0.20.3`، و`overrides` لـ`minimatch@11.0.1` (إصلاح ReDoS في أدوات البناء).
 - `desktop/test/server.test.mjs` — اختبارات أمان جديدة.
-- `src/ui_App.html` — إصلاح تأكيد إنهاء الحضور، بطاقة 6×6 سم، طباعة البطاقة.
+- `src/ui_App.html` — إصلاح تأكيد إنهاء الحضور، بطاقة 5.5×9 سم، طباعة البطاقة.
 - `src/ui_Home.html` — قارئ باركود مخفي/خريطة US، عدم إظهار النص الخام.
 - `src/ui_Settings.html` — إصدار بطاقة مستخدم النظام.
 - `src/ui_Styles.html` — أنماط البطاقة والطباعة والقارئ المخفي.

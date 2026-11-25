@@ -11,8 +11,8 @@
 
 | الملف | الحجم | SHA-256 |
 |---|---:|---|
-| `School-Attendance-Setup-3.6.2-x64.exe` | 122,780,952 بايت | `845B64A776CD45B8740CCE3286DC8326B925B52D6ABFA57A8247FB68C7E4D3DF` |
-| `School-Attendance-Portable-3.6.2-x64.exe` | 111,247,192 بايت | `F68C6476705C75303468A52FA0EE04805E9ED889DB4466CE1EB94DDD6FDADC03` |
+| `School-Attendance-Setup-3.6.2-x64.exe` | 122,781,184 بايت | `A8FCAE126413BB83F75E68635F3F4433CBC6569C70CFA45AADDEF3D1AADC2720F` |
+| `School-Attendance-Portable-3.6.2-x64.exe` | 111,231,512 بايت | `3A9CBAA6984F7A65CABCFA581A06BAFAC45740B7C18F2366C5E895E72AE322797` |
 
 - **التوقيع الرقمي:** موقّع بالشهادة الداخلية `School Attendance Internal Code Signing`،
   والحالة على جهاز البناء **`Valid`** (`Signature verified`).
@@ -135,6 +135,7 @@ npm.cmd --prefix desktop run import-students -- --file "E:\projects\بيانات
 | الخط والتنبيهات | الخط Times New Roman لكل الواجهة، والتنبيهات تُغلق تلقائيًا أو بزر × |
 | تقارب الأجهزة | جهازان وثلاثة أجهزة تصل إلى نفس البيانات |
 | الباركود | قارئ مخفي لا يعرض النص الخام، ولا يسبب قفز تمرير أو شاشة فارغة بعد الدخول |
+| مقاسات البطاقات | بطاقة 5.5×9 سم فعلية في PDF (156×255 pt)، و9 بطاقات على A4، وصورة QR 533–559 بكسل (≈300 DPI) |
 | التوقيع الرقمي | المثبّت والمحمول و`win-unpacked` موقّعة، والحالة `Valid` بعد تثبيت الشهادة |
 | تدقيق الأمان | 27/27 بندًا في `docs/SECURITY_AUDIT.md`؛ لا ثغرات حرجة/عالية متبقية |
 

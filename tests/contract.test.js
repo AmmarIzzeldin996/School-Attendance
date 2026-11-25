@@ -337,36 +337,41 @@ describe('api contract', () => {
     });
   });
 
-  it('prints all student barcodes with digits-only labels and a STU- code', () => {
+  it('prints all student barcodes as 5.5×9 cm cards with school, name, classroom and digits', () => {
     const srcDir = fileURLToPath(new URL('../src/', import.meta.url));
     const students = readFileSync(srcDir + 'ui_Students.html', 'utf8');
+    const app = readFileSync(srcDir + 'ui_App.html', 'utf8');
+    const styles = readFileSync(srcDir + 'ui_Styles.html', 'utf8');
     expect(students).toContain("text: 'طباعة كل الباركودات'");
     expect(students).toContain('printing-barcodes');
     expect(students).toContain("qr.addData('STU-' + digits)");
-    expect(students).toContain('function barcodeSvg(qr)');
-    expect(students).toContain('createElementNS');
-    expect(students).toContain("text: digits");
-    expect(readFileSync(srcDir + 'ui_Styles.html', 'utf8')).toContain('.barcode-label');
+    expect(students).toContain("state.settings.schoolName");
+    expect(students).toContain('ui.qrPng(qr, 4.5)');
+    expect(students).toContain('.decode()');
+    expect(students).toContain("ui.setPrintPage('A4')");
+    expect(students).toContain('text: digits');
+    expect(app).toContain("qrPng(qr, 4.5)");
+    expect(app).toContain("setPrintPage('5.5cm 9cm')");
+    expect(app).toContain("'print-card-school'");
+    expect(styles).toContain('width: 5.5cm; height: 9cm;');
+    expect(styles).toContain('repeat(3, 5.5cm)');
+    expect(styles).toContain('border: 2px solid #000');
+    expect(styles).toContain('width: 4.5cm; height: 4.5cm;');
   });
 
-  it('builds the bulk barcode as a printable vector SVG', () => {
+  it('generates a 300 DPI QR image at the requested print size', () => {
     const srcDir = fileURLToPath(new URL('../src/', import.meta.url));
-    const html = readFileSync(srcDir + 'ui_Students.html', 'utf8');
-    const start = html.indexOf('function barcodeSvg(qr) {');
+    const html = readFileSync(srcDir + 'ui_App.html', 'utf8');
+    const start = html.indexOf('function qrPng(qr, cm) {');
     const end = html.indexOf('\n  }', start);
     expect(start).toBeGreaterThan(-1);
     const source = html.slice(start, end + 4);
-    const element = () => ({ attrs: {}, setAttribute(key, value) { this.attrs[key] = value; } });
-    const svg = element();
-    svg.children = [];
-    svg.appendChild = function (child) { this.children.push(child); };
-    const document = { createElementNS: (ns, name) => (name === 'svg' ? svg : element()) };
-    const qr = { getModuleCount: () => 21, isDark: (row, col) => (row + col) % 2 === 0 };
-    const barcodeSvg = new Function('document', source + '\nreturn barcodeSvg;')(document);
-    barcodeSvg(qr);
-    expect(svg.attrs.viewBox).toBe('0 0 21 21');
-    expect(svg.children).toHaveLength(1);
-    expect(svg.children[0].attrs.d.split('M').length - 1).toBe(221);
+    const qr = { getModuleCount: () => 21, createDataURL: (cell, margin) => ({ cell, margin, px: 21 * cell + 2 * margin }) };
+    const qrPng = new Function(source + '\nreturn qrPng;')();
+    const image = qrPng(qr, 4.5);
+    expect(image.margin).toBe(4);
+    expect(image.cell).toBe(25);
+    expect(image.px).toBeGreaterThanOrEqual(Math.ceil(4.5 * 300 / 2.54));
   });
 
   it('wires adding an unrelated student to an open trip', () => {
