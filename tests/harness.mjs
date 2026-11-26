@@ -310,10 +310,17 @@ export function createApp(options = {}) {
     XFrameOptionsMode: { DEFAULT: 'DEFAULT' }
   };
 
+  const ContentService = {
+    MimeType: { JSON: 'application/json' },
+    createTextOutput(text) {
+      return { text: String(text), setMimeType(type) { this.mimeType = type; return this; } };
+    }
+  };
+
   const sandbox = {
     console: { log: (...args) => logs.push(args.join(' ')), error: (...args) => logs.push(args.join(' ')), warn: (...args) => logs.push(args.join(' ')) },
     SpreadsheetApp, PropertiesService, CacheService, LockService, Utilities, Session, ScriptApp,
-    DriveApp, HtmlService, MimeType: { PLAIN_TEXT: 'text/plain' },
+    DriveApp, HtmlService, ContentService, MimeType: { PLAIN_TEXT: 'text/plain' },
     URL: { fetch: () => { throw new Error('no network'); } },
     Date, Math, JSON, Object, Array, String, Number, Boolean, Set, Map, Error, RegExp,
     isNaN, parseInt, parseFloat, encodeURIComponent, decodeURIComponent

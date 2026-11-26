@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import http from 'node:http';
 import XLSX from 'xlsx';
 import { AppServer, isLoopback, safeEqual, privateAddress } from '../server.js';
@@ -162,7 +162,7 @@ describe('desktop HTTP server', () => {
       body: JSON.stringify({ action: 'ping', token: '', payload: {} })
     }).then((response) => response.json());
     expect(ping.success).toBe(true);
-    expect(ping.data.version).toBe('3.6.2');
+    expect(ping.data.version).toBe('3.6.3');
   });
 
   it('exposes desktop status, database download, and sync status', async () => {
@@ -372,5 +372,34 @@ describe('server guards', () => {
     expect(safeEqual('abc', 'abd')).toBe(false);
     expect(safeEqual('abc', 'abcd')).toBe(false);
     expect(safeEqual('', '')).toBe(false);
+  });
+
+  it('saves and removes Web App cloud settings through the local API', async () => {
+    const url = 'https://script.google.com/macros/s/AKfycbx-server-test/exec';
+    const secret = 'server-cloud-secret-1234567890';
+    vi.stubGlobal('fetch', async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ success: true, code: 'SUCCESS', message: '', data: [{ id: 'f1', name: 'cloud-attendance.json' }] })
+    }));
+    const headers = withToken({ 'content-type': 'application/json' });
+    try {
+      const saved = await rawRequest(base + '/desktop/backup/cloud', {
+        method: 'POST', headers,
+        body: JSON.stringify({ url, secret, test: true })
+      });
+      const data = JSON.parse(saved.body);
+      expect(saved.status).toBe(200);
+      expect(data.result.test.count).toBe(1);
+      expect(data.result.status.cloud.url).toBe(url);
+
+      const tested = await rawRequest(base + '/desktop/backup/cloud/test', { method: 'POST', headers: withToken() });
+      expect(JSON.parse(tested.body).test.count).toBe(1);
+
+      const removed = await rawRequest(base + '/desktop/backup/cloud/remove', { method: 'POST', headers: withToken() });
+      expect(JSON.parse(removed.body).status.cloud.present).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

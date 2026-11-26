@@ -135,6 +135,39 @@ function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
+// نقطة دخول منفصلة لتطبيق سطح المكتب: ثلاث عمليات فقط، بسر النسخ المستقل.
+var CLOUD_POST_ACTIONS_ = ['cloudBackupPut', 'cloudBackupList', 'cloudBackupGet'];
+
+function postJson_(success, code, message, data) {
+  return ContentService
+    .createTextOutput(JSON.stringify(envelope_(success, code, message, data)))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  try {
+    var body = e && e.postData && e.postData.contents;
+    var request = body ? parseJson_(body, null) : null;
+    if (!isPlainObject_(request)) fail_('BAD_REQUEST', ERROR_MESSAGES_.BAD_REQUEST);
+    var action = String(request.action || '');
+    if (CLOUD_POST_ACTIONS_.indexOf(action) < 0) fail_('UNKNOWN_ACTION', ERROR_MESSAGES_.UNKNOWN_ACTION);
+    var expected = cloudBackupSecret_(false);
+    if (!expected || String(request.secret || '') !== expected) {
+      fail_('FORBIDDEN', 'كلمة النسخ السحابي غير صحيحة. شغّل getCloudBackupSecret من محرر السكربت بحساب المالك.');
+    }
+    var payload = request.payload === undefined || request.payload === null ? {} : request.payload;
+    if (!isPlainObject_(payload)) fail_('BAD_REQUEST', ERROR_MESSAGES_.BAD_REQUEST);
+    var data;
+    if (action === 'cloudBackupPut') data = cloudBackupPut_(payload);
+    else if (action === 'cloudBackupList') data = cloudBackupList_();
+    else data = cloudBackupGet_(payload);
+    return postJson_(true, 'SUCCESS', 'تمت العملية.', data);
+  } catch (error) {
+    var safe = safeError_(error);
+    return postJson_(false, safe.code, safe.message, safe.details);
+  }
+}
+
 // ---------- التثبيت والترحيل (محرر فقط، محمي بهوية المالك) ----------
 function ownerIdentity_() {
   var owner = String(PropertiesService.getScriptProperties().getProperty('ADMIN_EMAIL') || '').toLowerCase();
@@ -165,6 +198,7 @@ function installSchool() {
     if (current !== book.getId()) fail_('PERMISSION_DENIED', 'المشروع مربوط بملف مختلف.');
     var report = ensureSchema_();
     var account = initializeAccounts_();
+    cloudBackupSecret_(true);
     ensureTriggers_();
     return { existing: true, schema: report, account: account, url: book.getUrl() };
   }
@@ -188,6 +222,7 @@ function installSchool() {
     SCHEMA_VERSION: '6',
     SETTINGS: JSON.stringify(defaultSettings_())
   });
+  cloudBackupSecret_(true);
   var account = initializeAccounts_();
   ensureTriggers_();
   return { existing: false, account: account, url: book.getUrl() };
@@ -272,6 +307,12 @@ function recoverSupervisor() {
   return withLock_(function () { return recoverSupervisorPassword_(); });
 }
 
+// يُشغَّل مرة من المحرر بحساب المالك، ثم تُنسخ القيمة إلى تطبيق سطح المكتب.
+function getCloudBackupSecret() {
+  ownerIdentity_();
+  return cloudBackupSecret_(true);
+}
+
 function runMaintenanceNow() {
   ownerIdentity_();
   return maintenance_();
@@ -281,6 +322,7 @@ function runMaintenanceNow() {
 function maintenance_() {
   var props = PropertiesService.getScriptProperties();
   if (!props.getProperty('DB_ID')) return { skipped: 'no_database' };
+  cloudBackupSecret_(true);
   var effective = String(Session.getEffectiveUser().getEmail() || '').toLowerCase();
   if (!effective || effective !== String(props.getProperty('ADMIN_EMAIL') || '').toLowerCase()) {
     return { skipped: 'not_owner' };

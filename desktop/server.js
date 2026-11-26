@@ -186,7 +186,7 @@ class AppServer {
     this.logger = options.logger;
     this.dataDir = options.dataDir;
     this.uiDir = options.uiDir || path.join(__dirname, 'ui');
-    this.appVersion = options.appVersion || '3.6.2';
+    this.appVersion = options.appVersion || '3.6.3';
     this.onInstalled = options.onInstalled || function () {};
     this.onBeforeQuit = options.onBeforeQuit || function () {};
     this.server = null;
@@ -613,6 +613,25 @@ class AppServer {
       if (!this.update) { sendJson(res, 404, { success: false, error: 'فحص التحديث غير متاح.' }); return; }
       const status = await this.update.download();
       sendJson(res, 200, { ok: true, update: status });
+      return;
+    }
+
+    if (pathname === '/desktop/backup/cloud' && method === 'POST') {
+      const body = await readJsonBody(req, MAX_JSON);
+      const result = await this.backup.saveCloudConfig(body);
+      sendJson(res, 200, { ok: true, result });
+      return;
+    }
+
+    if (pathname === '/desktop/backup/cloud/remove' && method === 'POST') {
+      const result = this.backup.removeCloudConfig();
+      sendJson(res, 200, { ok: true, status: result.status });
+      return;
+    }
+
+    if (pathname === '/desktop/backup/cloud/test' && method === 'POST') {
+      const test = await this.backup.cloudTestConnection();
+      sendJson(res, 200, { ok: true, test });
       return;
     }
 

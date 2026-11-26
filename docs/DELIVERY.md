@@ -1,6 +1,6 @@
 # DELIVERY — تسليم نظام الحضور والانصراف 3.6
 
-**تاريخ التسليم:** 2026-11-18 • **الإصدار:** `3.6.2`
+**تاريخ التسليم:** 2026-11-26 • **الإصدار:** `3.6.3`
 **المنصات:** Google Apps Script (ويب) + تطبيق Windows 10/11 x64
 
 ---
@@ -11,8 +11,8 @@
 
 | الملف | الحجم | SHA-256 |
 |---|---:|---|
-| `School-Attendance-Setup-3.6.2-x64.exe` | 122,781,184 بايت | `A8FCAE126413BB83F75E68635F3F4433CBC6569C70CFA45AADDEF3D1AADC2720F` |
-| `School-Attendance-Portable-3.6.2-x64.exe` | 111,231,512 بايت | `3A9CBAA6984F7A65CABCFA581A06BAFAC45740B7C18F2366C5E895E72AE322797` |
+| `School-Attendance-Setup-3.6.3-x64.exe` | 122,782,448 بايت | `1E627649C0DAA51A2A2491F44437ACA0265838036F775F4DD7D7C4EAEBA6BF73` |
+| `School-Attendance-Portable-3.6.3-x64.exe` | 111,247,840 بايت | `BE3BB336AA31A75A09E349F88870F126BB6789DA06D80B61B695C71B354D7072` |
 
 - **التوقيع الرقمي:** موقّع بالشهادة الداخلية `School Attendance Internal Code Signing`،
   والحالة على جهاز البناء **`Valid`** (`Signature verified`).
@@ -34,8 +34,8 @@
 ### التحقق من السلامة
 
 ```powershell
-Get-FileHash '.\dist-desktop\School-Attendance-Setup-3.6.2-x64.exe' -Algorithm SHA256
-Get-AuthenticodeSignature '.\dist-desktop\School-Attendance-Setup-3.6.2-x64.exe'
+Get-FileHash '.\dist-desktop\School-Attendance-Setup-3.6.3-x64.exe' -Algorithm SHA256
+Get-AuthenticodeSignature '.\dist-desktop\School-Attendance-Setup-3.6.3-x64.exe'
 ```
 
 ---
@@ -107,13 +107,12 @@ npm.cmd --prefix desktop run import-students -- --file "E:\projects\بيانات
 ## 5) النسخ الاحتياطي
 
 - محلي دائمًا: `backups/exports/attendance-<deviceId>-<stamp>.json` و`.xlsx`.
-- سحابي: جدول Google مقروء بتبويبات عربية + رفع JSON/XLSX إلى Drive.
-- **رفع الملفات إلى Drive** يحتاج مساحة حساب مستخدم، وليس حساب خدمة. لذلك:
-  أنشئ عميل OAuth (نوع Desktop app) في المشروع نفسه، ثم **سطح المكتب ← النسخ السحابي
-  ← حساب Google لرفع الملفات** وارفع `client_secret_*.json` واضغط «ربط حساب Google».
-  الصلاحية `drive.file` فقط (الملفات التي ينشئها النظام)، والرمز يُخزَّن مشفرًا.
-- بدون ربط الحساب يبقى البديل السابق: أرشيف JSON داخل تبويب `JSON` في جدول Google
-  مع النسختين المحليتين. هذا **نجاح** وليس خطأً؛ القيد من Google على حسابات الخدمة.
+- سحابي: أرشيف JSON عبر Web App الخاص بنظام الحضور، يُحفظ في Drive صاحب السكربت
+  بصلاحية `DriveApp`، بلا Google Cloud ولا OAuth. الرابط والسر يدخلان من
+  **سطح المكتب ← النسخ السحابي** ويُخزنان مشفرًا على الجهاز.
+- `doPost` يسمح بثلاث عمليات فقط (`cloudBackupPut`، `cloudBackupList`، `cloudBackupGet`)
+  وكلها تتطلب سرًا مستقلًا عن كلمة المشرف؛ أي إجراء إداري آخر مرفوض.
+- يُحتفظ بآخر 10 نسخ سحابية. السحابة أرشيف فقط، لا مزامنة ثنائية الاتجاه.
 - زر **«فتح مجلد النسخ المحلية»** يفتح `backups\\exports` مباشرة من تبويب النسخ.
 - الاستعادة: **سطح المكتب ← النسخ السحابي ← استيراد أحدث نسخة سحابية**.
 - النسخ التلقائي اليومي مستقل عن `settings.autoBackup`، ويستخدم وقت النسخ في الإعدادات.

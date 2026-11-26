@@ -147,6 +147,69 @@ function pruneBackups_(keep) {
   return removed;
 }
 
+// ---------- أرشيف سحابي مستقل: Drive صاحب السكربت، سر خاص، آخر 10 نسخ ----------
+var CLOUD_KEEP_ = 10;
+var CLOUD_MAX_CHARS_ = 8000000;
+
+function cloudBackupSecret_(create) {
+  var props = PropertiesService.getScriptProperties();
+  var secret = props.getProperty('CLOUD_BACKUP_SECRET');
+  if (!secret && create) {
+    secret = uuid_() + uuid_();
+    props.setProperty('CLOUD_BACKUP_SECRET', secret);
+  }
+  return secret || '';
+}
+
+function cloudBackupFiles_() {
+  var props = PropertiesService.getScriptProperties();
+  var id = props.getProperty('BACKUP_FOLDER');
+  if (!id) return [];
+  var iterator;
+  try { iterator = DriveApp.getFolderById(id).getFiles(); }
+  catch (error) { return []; }
+  var files = [];
+  while (iterator.hasNext()) {
+    var file = iterator.next();
+    if (!file.isTrashed() && /^cloud-attendance-.*\.json$/.test(file.getName())) files.push(file);
+  }
+  return files.sort(function (a, b) { return b.getDateCreated().getTime() - a.getDateCreated().getTime(); });
+}
+
+function cloudBackupPut_(payload) {
+  var snapshot = payload && payload.snapshot;
+  if (!isPlainObject_(snapshot)) fail_('BAD_REQUEST', 'النسخة المرسلة غير صحيحة.');
+  validateSnapshot_(snapshot);
+  var text = JSON.stringify(snapshot);
+  if (text.length > CLOUD_MAX_CHARS_) {
+    fail_('PAYLOAD_TOO_LARGE', 'حجم النسخة أكبر من حد الرفع (8 ميغابايت). صدّر النسخة محليًا وراجع حجم البيانات.');
+  }
+  var name = 'cloud-attendance-' + Utilities.formatDate(new Date(), TIMEZONE_, 'yyyyMMdd-HHmmss') + '-' + uuid_().slice(0, 8) + '.json';
+  var file = backupFolder_().createFile(name, text, MimeType.PLAIN_TEXT);
+  var removed = 0;
+  cloudBackupFiles_().slice(CLOUD_KEEP_).forEach(function (old) { old.setTrashed(true); removed += 1; });
+  return { id: file.getId(), name: name, url: file.getUrl(), createdAt: stamp_(), size: text.length, pruned: removed };
+}
+
+function cloudBackupList_() {
+  return cloudBackupFiles_().map(function (file) {
+    return {
+      id: file.getId(), name: file.getName(), url: file.getUrl(),
+      createdAt: file.getDateCreated().toISOString(), size: file.getSize()
+    };
+  });
+}
+
+function cloudBackupGet_(payload) {
+  var id = String(payload && payload.id || '');
+  var file = cloudBackupFiles_().filter(function (item) { return item.getId() === id; })[0];
+  if (!file) fail_('NOT_FOUND', 'النسخة السحابية غير موجودة داخل مجلد نسخ النظام.');
+  if (file.getSize() > CLOUD_MAX_CHARS_) fail_('PAYLOAD_TOO_LARGE', 'النسخة كبيرة جدًا للتنزيل.');
+  var text = file.getBlob().getDataAsString('UTF-8');
+  validateSnapshot_(parseJson_(text, null));
+  return { id: file.getId(), name: file.getName(), text: text, createdAt: file.getDateCreated().toISOString() };
+}
+
 function createBackup_(ctx) {
   var payload = snapshot_();
   var folder = backupFolder_();

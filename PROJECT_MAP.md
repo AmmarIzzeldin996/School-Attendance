@@ -153,13 +153,15 @@ UDP discovery (deviceId + منفذ + اسم الجهاز)
 runNow
   ├─ createBackup_ → نسخة محلية JSON داخل data/drive
   ├─ تصدير attendance-<deviceId>-<stamp>.json و.xlsx في backups/exports
-  ├─ Google Sheets: تبويبات عربية مقروءة (الطلاب/الحضور/الأيام/...)
-  ├─ Google Drive: رفع JSON وXLSX عند توفر مساحة
-  └─ عند 403 storage quota: أرشيف JSON داخل تبويب JSON في جدول Google
+  └─ إن وُجد رابط Web App والسر: POST /exec بـ cloudBackupPut
+       ├─ doPost → ثلاث عمليات فقط، كلها تتطلب CLOUD_BACKUP_SECRET
+       └─ DriveApp → cloud-attendance-*.json في Drive صاحب السكربت (آخر 10 نسخ)
 ```
 
-- الاستعادة: `/desktop/backup/import-latest` يقرأ ملف Drive أو تبويب JSON ثم ينزّله للنسخ المحلية.
+- الاستعادة: `/desktop/backup/import-latest` يستدعي `cloudBackupList` ثم `cloudBackupGet` وينزّل الأحدث إلى النسخ المحلية.
+- الإعداد: `/desktop/backup/cloud` يحفظ الرابط والسر مشفرًّا عبر `Secrets.scope('cloud-webapp')`.
 - النسخ التلقائي يومي وفق وقت النسخ في إعدادات النظام، ومستقل عن `settings.autoBackup` في GAS.
+- السحابة أرشيف أحادي الاتجاه؛ لا مزامنة ثنائية الاتجاه ولا Google Cloud/OAuth.
 
 ---
 
@@ -205,7 +207,8 @@ runNow
 | `sync/engine.js` | توليد العمليات، مزامنة الأقران، الحالة | واجهة |
 | `sync/apply.js` | تطبيق العمليات، دمج الحقول/العناصر، الحذف | قراءة الملفات |
 | `sync/discovery.js` | اكتشاف UDP للأقران على LAN (بدون مفاتيح) | مزامنة سحابية أو بث أسرار |
-| `backup/google.js` | OAuth حساب الخدمة، Sheets/Drive، أرشيف JSON | تشغيل النظام |
+| `backup/google.js` | OAuth حساب الخدمة، Sheets/Drive، أرشيف JSON (مسار قديم) | تشغيل النظام |
+| `backup/webapp.js` | رابط `/exec` وسر النسخ، عميل JSON مقيّد لـ `doPost` | مزامنة أو Google Cloud |
 | `backup/workbook.js` | استيراد الطلاب، تبويبات مقروءة، XLSX | تعديل القاعدة |
 | `backup/manager.js` | نسخ محلي/سحابي، استعادة، جدولة، تقليم | واجهة |
 | `update/updater.js` | فحص `update.json` على GitHub، تنزيل المثبّت مع تحقق sha256، تشغيله فوق القديم | تعديل البيانات |
@@ -254,15 +257,15 @@ runNow
 | 28 | حالة النسخ والاستعادة | `ui_Settings` | `getBackupStatus`, `previewRestore`, `restoreBackup` | `backup` |
 | 29 | سياسة الاحتفاظ | `ui_Settings` | `runRetention` | `backup` |
 | 30 | ترحيل 3.5 | محرر فقط | `migrateV36` | `migration` |
-| 31 | التثبيت والصيانة | محرر فقط | `installSchool`, `maintenance_`, `recoverSupervisor` | `smoke`, `backup` |
+| 31 | التثبيت والصيانة وسر النسخ | محرر فقط | `installSchool`, `maintenance_`, `recoverSupervisor`, `getCloudBackupSecret` | `smoke`, `backup`, `cloud` |
 | 32 | تهيئة جهاز سطح مكتب جديد | `desktop/ui/setup.html` | `/setup/install`, `/setup/parse-students` | `desktop/server`, `desktop/workbook` |
 | 33 | انضمام جهاز إلى جهاز قائم | `desktop/ui/setup.html` | `/setup/join`, `/desktop/clone` | `desktop/server`, `desktop/sync` |
 | 34 | عمل كامل دون إنترنت | كل الواجهة | `/api` محلي | `desktop/store`, `desktop/server` |
 | 35 | مزامنة تلقائية/يدوية بين الأجهزة | لوحة سطح المكتب | `/desktop/sync/*`, `/sync/changes` | `desktop/sync` |
 | 36 | استيراد الطلاب من Excel/CSV | لوحة سطح المكتب + CLI | `importStudents`, `/desktop/parse-students` | `desktop/workbook`, `desktop/sync` |
 | 37 | نسخة محلية JSON + XLSX | لوحة سطح المكتب | `/desktop/backup/run` | `desktop/backup` |
-| 38 | نسخة سحابية مقروءة | لوحة سطح المكتب | `/desktop/backup/test`, `/desktop/backup/run` | `desktop/backup` |
-| 39 | استعادة أحدث نسخة سحابية | لوحة سطح المكتب | `/desktop/backup/import-latest` | `desktop/backup` |
+| 38 | نسخة سحابية عبر Web App | لوحة سطح المكتب | `/desktop/backup/cloud`, `/desktop/backup/cloud/test`, `/desktop/backup/run` | `desktop/backup`, `doPost` |
+| 39 | استعادة أحدث نسخة سحابية | لوحة سطح المكتب | `/desktop/backup/import-latest` | `desktop/backup`, `cloudBackupGet` |
 | 40 | معلومات الجهاز وتنزيل القاعدة | لوحة سطح المكتب | `/desktop/status`, `/desktop/database` | `desktop/server` |
 | 41 | بطاقة مستخدم النظام وطباعتها 5.5×9 سم | `ui_Settings` | `issueCard('USER')` | `cards` |
 | 41 | استعادة كلمة مرور المشرف (بتأكيد UAC) | شاشة الدخول | IPC `desktop:recover-admin` | `desktop/main`, `desktop/lib/elevation`, `desktop/ui` |

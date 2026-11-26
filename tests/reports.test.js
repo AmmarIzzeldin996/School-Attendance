@@ -1,5 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { setup, ok, fail, okAs, failAs, createUser, loginAs } from './harness.mjs';
+
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-11-25T08:30:00+03:00'));
+});
+afterAll(() => vi.useRealTimers());
 
 const STUDENTS = [
   { id: '1001', name: 'أحمد محمد', classroom: 'الصف الأول', phone: '0511111111' },

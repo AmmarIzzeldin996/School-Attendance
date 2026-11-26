@@ -5,6 +5,7 @@ const path = require('node:path');
 const { ensureDir, readJson, writeJsonAtomic, writeTextAtomic } = require('../lib/atomic');
 const { Mutex } = require('../lib/mutex');
 const { GoogleClient, GoogleUserAuth, validateCredentials, validateUserAuth, JSON_ARCHIVE_TAB } = require('./google');
+const { WebAppClient, validateCloudConfig, describeCloudConfig } = require('./webapp');
 const { readableTabs, writeWorkbook } = require('./workbook');
 
 const DEFAULT_FOLDER = 'School Attendance Backups';
@@ -50,6 +51,9 @@ class BackupManager {
       ? this.secrets.scope('google-user', validateUserAuth, (data) => ({ email: String(data.email || ''), project: '' }))
       : null);
     this.userAuth = userSecrets ? new GoogleUserAuth(userSecrets, { logger: this.logger }) : null;
+    this.cloudSecrets = options.cloudSecrets || (this.secrets && this.secrets.scope
+      ? this.secrets.scope('cloud-webapp', validateCloudConfig, describeCloudConfig)
+      : null);
     this.pendingAuth = null;
     this.config = Object.assign({
       enabled: true,
@@ -79,6 +83,84 @@ class BackupManager {
 
   credentialsInfo() {
     try { return this.secrets.info(); } catch (error) { return { present: false, error: error.message }; }
+  }
+
+  cloudInfo() {
+    if (!this.cloudSecrets) return { present: false, url: '', protectedBy: '', savedAt: '' };
+    try {
+      const info = this.cloudSecrets.info();
+      return {
+        present: !!info.present, url: info.clientEmail || '',
+        protectedBy: info.protectedBy || '', savedAt: info.savedAt || ''
+      };
+    } catch (error) {
+      return { present: false, url: '', protectedBy: '', savedAt: '', error: error.message };
+    }
+  }
+
+  cloudConfigured() { return this.cloudInfo().present; }
+
+  cloudClient() {
+    if (!this.cloudSecrets) throw new Error('تخزين أسرار السحابة غير متاح على هذا الجهاز.');
+    const config = this.cloudSecrets.load();
+    if (!config) throw new Error('لم تُضف رابط Web App وكلمة النسخ السحابي بعد.');
+    return new WebAppClient(config, { logger: this.logger });
+  }
+
+  async saveCloudConfig(input) {
+    if (!this.cloudSecrets) throw new Error('تخزين أسرار السحابة غير متاح على هذا الجهاز.');
+    const current = this.cloudSecrets.load() || {};
+    this.cloudSecrets.save({
+      url: input && input.url ? input.url : current.url,
+      secret: input && input.secret ? input.secret : current.secret
+    });
+    let test = null;
+    if (!input || input.test !== false) {
+      try { test = await this.cloudTestConnection(); } catch (error) { test = { error: error.message }; }
+    }
+    return { ok: true, cloud: this.cloudInfo(), test, status: this.status() };
+  }
+
+  removeCloudConfig() {
+    if (this.cloudSecrets) this.cloudSecrets.remove();
+    return { ok: true, status: this.status() };
+  }
+
+  async cloudTestConnection() {
+    const files = await this.cloudClient().list();
+    const list = Array.isArray(files) ? files : [];
+    return { ok: true, count: list.length, latest: list[0] ? list[0].name : '' };
+  }
+
+  async cloudUpload(snapshot, reason) {
+    const saved = await this.cloudClient().put(snapshot);
+    return {
+      json: { id: saved.id, name: saved.name, url: saved.url },
+      archiveMode: 'script-drive',
+      archiveNote: 'حُفظت النسخة في Drive صاحب السكربت عبر Web App، مع الاحتفاظ بآخر 10 نسخ.',
+      pruned: saved.pruned || 0,
+      reason: reason || ''
+    };
+  }
+
+  async cloudImportLatest() {
+    return this.mutex.run(async () => {
+      const files = await this.cloudClient().list();
+      const list = Array.isArray(files) ? files : [];
+      if (!list.length) throw new Error('لا توجد نسخة سحابية قابلة للاستعادة.');
+      const latest = list.slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0];
+      const downloaded = await this.cloudClient().get(latest.id);
+      const folder = await this.runtime.callInternal('backupFolder_', []);
+      // يُحفظ باسم attendance- ليظهر في قائمة الاستعادة داخل التطبيق.
+      const name = String(latest.name || '').replace(/^cloud-/, '');
+      const target = this.store.createFile(folder.getId(), name, downloaded.text);
+      this.store.save();
+      this.logger.info('backup_cloud_imported', { file: latest.name, mode: 'script-drive' });
+      return {
+        name: latest.name, id: target.id, createdAt: latest.createdAt,
+        size: downloaded.text.length, archiveMode: 'script-drive'
+      };
+    });
   }
 
   configured() {
@@ -128,6 +210,7 @@ class BackupManager {
         folderId: this.config.folderId
       },
       userAuth: this.userInfo(),
+      cloud: this.cloudInfo(),
       state: this.state,
       busy: this.busy
     };
@@ -261,8 +344,12 @@ class BackupManager {
         this.state.lastCounts = local && local.counts ? local.counts : null;
 
         let cloud = null;
-        if (this.configured() && this.config.enabled !== false) {
+        if (this.cloudConfigured() && this.config.enabled !== false) {
+          cloud = await this.cloudUpload(snapshot, reason);
+        } else if (this.configured() && this.config.enabled !== false) {
           cloud = await this.uploadToCloud(snapshot, jsonName, jsonText, xlsxName, xlsx, settings, reason);
+        }
+        if (cloud) {
           this.state.lastCloudAt = new Date().toISOString();
           this.state.lastCloudFile = cloud.json && cloud.json.id
             ? cloud.json.id
@@ -371,6 +458,7 @@ class BackupManager {
   }
 
   async importLatest() {
+    if (this.cloudConfigured()) return this.cloudImportLatest();
     return this.mutex.run(async () => {
       const service = this.client();
       const drive = this.userClient();
@@ -435,7 +523,7 @@ class BackupManager {
     let settings;
     try { settings = await this.runtime.callInternal('readSettings_', []); } catch (error) { return { skipped: 'settings' }; }
     if (this.config.auto === false || this.config.enabled === false) return { skipped: 'disabled' };
-    if (!this.configured()) return { skipped: 'not_configured' };
+    if (!this.cloudConfigured() && !this.configured()) return { skipped: 'not_configured' };
     const now = new Date();
     const timeZone = 'Asia/Riyadh';
     const parts = new Intl.DateTimeFormat('en-GB', {

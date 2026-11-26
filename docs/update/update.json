@@ -1,6 +1,6 @@
 {
-  "version": "3.6.2",
-  "url": "https://github.com/AmmarIzzeldin996/School-Attendance/releases/download/v3.6.2/School-Attendance-Setup-3.6.2-x64.exe",
-  "notes": "عزل فصول لكل حساب، تقويم هجري/ميلادي بزر واحد، طباعة باركود الطلاب جماعيًا، بطاقات 5.5×9 سم برمز QR عالي الدقة، إضافة طالب غير مرتبط للرحلة، فحص تحديث تلقائي",
-  "sha256": "a8fcae126413bb83f75e68635f3f4433cbc6569c70cfa45aadef3d1aadc2720f"
+  "version": "3.6.3",
+  "url": "https://github.com/AmmarIzzeldin996/School-Attendance/releases/download/v3.6.3/School-Attendance-Setup-3.6.3-x64.exe",
+  "notes": "نسخ سحابي عبر Web App وDrive صاحب السكربت بسر مستقل مشفر على الجهاز، والاحتفاظ بآخر 10 نسخ؛ استيراد واستعادة سحابية تعمل من تبويب النسخ الاحتياطي؛ واجهة أنظف بلا تعليمات تقنية.",
+  "sha256": "1e627649c0daa51a2a2491f44437aca0265838036f775f4dd7d7c4eaeba6bf73"
 }

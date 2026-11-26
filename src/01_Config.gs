@@ -1,5 +1,5 @@
 // 01_Config.gs — ثوابت النظام وخريطة الصلاحيات. لا منطق أعمال هنا.
-var APP_VERSION_ = '3.6.2';
+var APP_VERSION_ = '3.6.3';
 var TIMEZONE_ = 'Asia/Riyadh';
 var SESSION_IDLE_MS_ = 30 * 60 * 1000;
 var SESSION_ABSOLUTE_MS_ = 8 * 60 * 60 * 1000;

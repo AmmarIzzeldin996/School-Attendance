@@ -276,220 +276,140 @@
     ]);
   }
 
-  /* ---------------- تبويب النسخ السحابي ---------------- */
+  /* ---------------- تبويب النسخ السحابي (Web App) ---------------- */
   function backupTab() {
     var status = state.status || {};
     var backup = status.backup || {};
     var config = backup.config || {};
-    var creds = backup.credentials || {};
     var stateInfo = backup.state || {};
+    var cloud = backup.cloud || {};
     var nodes = [];
     var message = el('div', { className: 'ds-alert-slot' });
 
     nodes.push(el('div', { className: 'ds-summary' }, [
-      el('div', {}, [el('b', { text: creds.present ? ('متصل: ' + (creds.clientEmail || '')) : 'Google غير مُهيأ' }),
-        el('span', {
-          className: 'hint',
-          text: creds.present ? ' — ' + (creds.protectedBy || '') + ' — ' + (creds.projectId || '') : ''
-        })]),
-      el('div', { className: 'hint', text: 'آخر نجاح: ' + when(stateInfo.lastSuccessAt) + ' — آخر تشغيل: ' + when(stateInfo.lastRunAt) })
-    ]));
-    if (stateInfo.lastError) nodes.push(alertBox('آخر خطأ: ' + stateInfo.lastError, 'warn'));
-    if (stateInfo.lastArchiveMode === 'google-sheet' && stateInfo.lastArchiveNote) {
-      nodes.push(alertBox('تم النسخ الاحتياطي بنجاح. ' + stateInfo.lastArchiveNote, 'info'));
-    } else if (stateInfo.lastArchiveMode === 'drive-files') {
-      nodes.push(alertBox('النسخة السحابية الأخيرة رُفعت كملفات JSON وXLSX إلى مجلد Drive، مع تحديث الجدول المقروء.', 'ok'));
-    }
-
-    var fileInput = el('input', { type: 'file', accept: '.json,application/json' });
-    fileInput.addEventListener('change', function () {
-      var file = fileInput.files && fileInput.files[0];
-      if (!file) return;
-      file.text().then(function (text) {
-        return request('/desktop/backup/credentials', { method: 'POST', body: { credentials: JSON.parse(text), test: true } });
-      }).then(function (data) {
-        message.innerHTML = '';
-        var test = data.test || {};
-        message.appendChild(alertBox(test.error ? ('حُفظت البيانات لكن فشل الاختبار: ' + test.error) : 'تم حفظ بيانات حساب الخدمة والاتصال بنجاح.', test.error ? 'warn' : 'ok'));
-        state.backupTest = test;
-        refresh(modalRef, true);
-      }).catch(function (error) {
-        message.innerHTML = '';
-        message.appendChild(alertBox(error.message || 'ملف غير صالح.', 'error'));
-      });
-    });
-    // ربط حساب Google للمشرف: الطريقة الوحيدة لرفع ملفات JSON وXLSX إلى Drive،
-    // لأن حساب الخدمة لا يملك مساحة تخزين.
-    var userAuth = backup.userAuth || { present: false, linked: false, email: '' };
-    var oauthFile = el('input', { type: 'file', accept: '.json,application/json' });
-    var oauthNodes = [];
-    if (userAuth.linked) {
-      oauthNodes.push(el('div', { className: 'hint', text: 'مرتبط بحساب: ' + (userAuth.email || 'حساب Google') }));
-      oauthNodes.push(button('إلغاء الربط', function (node) {
-        node.disabled = true;
-        request('/desktop/backup/oauth/remove', { method: 'POST' }).then(function () {
-          message.innerHTML = '';
-          message.appendChild(alertBox('أُلغي ربط حساب Google؛ يعود النسخ إلى أرشيف جدول Google.', 'ok'));
-          refresh(modalRef, true);
-        }).catch(function (error) {
-          message.innerHTML = '';
-          message.appendChild(alertBox(error.message, 'error'));
-          node.disabled = false;
-        });
-      }, 'sm danger'));
-    } else {
-      oauthNodes.push(el('div', { className: 'ds-inline' }, [oauthFile, button('ربط حساب Google', function (node) {
-        var file = oauthFile.files && oauthFile.files[0];
-        if (!file) {
-          message.innerHTML = '';
-          message.appendChild(alertBox('اختر ملف عميل OAuth (client_secret_*.json) أولًا.', 'warn'));
-          return;
-        }
-        node.disabled = true;
-        file.text().then(function (text) {
-          return request('/desktop/backup/oauth/start', { method: 'POST', body: { client: JSON.parse(text) } });
-        }).then(function (data) {
-          if (window.desktopSA && window.desktopSA.openExternal) window.desktopSA.openExternal(data.url);
-          else window.open(data.url, '_blank', 'noopener');
-          message.innerHTML = '';
-          message.appendChild(alertBox('أكمل الموافقة في المتصفح، ثم اضغط «تحقق من الربط».', 'info'));
-        }).catch(function (error) {
-          message.innerHTML = '';
-          message.appendChild(alertBox(error.message || 'ملف عميل OAuth غير صالح.', 'error'));
-        }).finally(function () { node.disabled = false; });
-      }), button('تحقق من الربط', function (node) {
-        node.disabled = true;
-        request('/desktop/backup/status').then(function (status) {
-          var linked = status && status.userAuth && status.userAuth.linked;
-          message.innerHTML = '';
-          message.appendChild(alertBox(linked
-            ? 'تم ربط حساب Google بنجاح: ' + (status.userAuth.email || 'حساب Google') + '.'
-            : 'لم يكتمل الربط بعد. أكمل الموافقة في المتصفح ثم أعد المحاولة.', linked ? 'ok' : 'warn'));
-          if (linked) refresh(modalRef, true);
-        }).catch(function (error) {
-          message.innerHTML = '';
-          message.appendChild(alertBox(error.message, 'error'));
-        }).finally(function () { node.disabled = false; });
-      }, 'sm')]));
-    }
-    nodes.push(section('حساب Google لرفع الملفات',
-      'أنشئ عميل OAuth (نوع Desktop app) في نفس مشروع Google Cloud، فعّل Drive API، ثم ارفع ملف client_secret_*.json واربط الحساب. الصلاحية المطلوبة drive.file فقط (الملفات التي ينشئها النظام).',
-      [el('div', { className: 'ds-actions' }, oauthNodes)]));
-
-    nodes.push(section('حساب خدمة Google', 'ارفع ملف مفتاح حساب الخدمة (JSON). يُخزَّن مشفرًا على هذا الجهاز ولا يُرسل لأي طرف آخر.', [
-      el('div', { className: 'ds-inline' }, [fileInput, button('اختبار الاتصال', function (node) {
-        node.disabled = true;
-        request('/desktop/backup/test', { method: 'POST' }).then(function (data) {
-          state.backupTest = data.test || {};
-          message.innerHTML = '';
-          message.appendChild(alertBox('الاتصال ناجح. المجلد: ' + (data.test.folderName || '') + ' — الجدول: ' + (data.test.spreadsheetName || ''), 'ok'));
-          refresh(modalRef, true);
-        }).catch(function (error) {
-          message.innerHTML = '';
-          message.appendChild(alertBox(error.message, 'error'));
-        }).finally(function () { node.disabled = false; });
-      }), button('إزالة البيانات', function (node) {
-        node.disabled = true;
-        request('/desktop/backup/remove-credentials', { method: 'POST' }).then(function () {
-          message.innerHTML = '';
-          message.appendChild(alertBox('أُزيلت بيانات الاعتماد من هذا الجهاز.', 'ok'));
-          refresh(modalRef, true);
-        }).catch(function (error) {
-          message.innerHTML = '';
-          message.appendChild(alertBox(error.message, 'error'));
-          node.disabled = false;
-        });
-      }, 'sm danger')])
-    ]));
-
-    var folder = input(config.folderName || 'School Attendance Backups');
-    var sheetName = input(config.spreadsheetName || 'School Attendance Backup');
-    var sheetId = input(config.spreadsheetId || '', { dir: 'ltr', placeholder: 'اتركه فارغًا للإنشاء التلقائي' });
-    var auto = el('input', { type: 'checkbox' });
-    auto.checked = config.auto !== false;
-    nodes.push(section('إعدادات النسخ', 'نسخة JSON كاملة وملف Excel محليًا، وجدول Google مقروء. تُرفع ملفات JSON وXLSX إلى Drive عند توفر مساحة؛ وإلا يُحفظ أرشيف JSON داخل تبويب «JSON» في جدول Google.', [
-      el('div', { className: 'ds-grid-3' }, [field('مجلد Drive', folder), field('اسم جدول Google', sheetName), field('معرف الجدول (اختياري)', sheetId)]),
-      el('label', { className: 'ds-check' }, [auto, el('span', { text: 'نسخ تلقائي يومي في وقت النسخ الاحتياطي من الإعدادات العامة' })]),
-      el('div', { className: 'ds-actions' }, [
-        button('حفظ الإعدادات', function (node) {
-          node.disabled = true;
-          request('/desktop/backup/config', { method: 'POST', body: {
-            folderName: folder.value.trim(), spreadsheetName: sheetName.value.trim(),
-            spreadsheetId: sheetId.value.trim(), auto: auto.checked
-          } }).then(function () {
-            message.innerHTML = '';
-            message.appendChild(alertBox('حُفظت إعدادات النسخ.', 'ok'));
-            refresh(modalRef, true);
-          }).catch(function (error) {
-            message.innerHTML = '';
-            message.appendChild(alertBox(error.message, 'error'));
-          }).finally(function () { node.disabled = false; });
-        }),
-        button('نسخ الآن', function (node) {
-          node.disabled = true;
-          message.innerHTML = '';
-          message.appendChild(alertBox('جارٍ إنشاء النسخة المحلية ورفعها إلى Google…', 'warn'));
-          request('/desktop/backup/run', { method: 'POST' }).then(function (data) {
-            var result = data.result || {};
-            var cloud = result.cloud || null;
-            var summary = 'اكتمل النسخ الاحتياطي.';
-            var kind = 'ok';
-            if (!cloud) {
-              summary += ' (سحابي غير مُهيأ)';
-            } else if (cloud.archiveMode === 'google-sheet') {
-              summary = 'اكتمل النسخ الاحتياطي بنجاح: حُدّث جدول Google المقروء، وحُفظ أرشيف JSON كامل داخل تبويب «JSON»، والنسختان JSON وXLSX محفوظتان على هذا الجهاز.';
-              kind = 'ok';
-            } else {
-              summary += ' رُفعت ملفات JSON وXLSX إلى مجلد Drive: ' + ((cloud.json && cloud.json.name) || '') + '.';
-            }
-            message.innerHTML = '';
-            message.appendChild(alertBox(summary, kind));
-            if (cloud && cloud.folderUrl) {
-              message.appendChild(el('div', { className: 'ds-links' }, [
-                el('a', { href: cloud.folderUrl, target: '_blank', rel: 'noreferrer', text: 'فتح مجلد Drive' }),
-                el('a', { href: cloud.spreadsheetUrl, target: '_blank', rel: 'noreferrer', text: 'فتح جدول Google' })
-              ]));
-            }
-            refresh(modalRef, true);
-          }).catch(function (error) {
-            message.innerHTML = '';
-            message.appendChild(alertBox(error.message, 'error'));
-          }).finally(function () { node.disabled = false; });
-        }, 'primary'),
-        button('استيراد أحدث نسخة سحابية', function (node) {
-          node.disabled = true;
-          request('/desktop/backup/import-latest', { method: 'POST' }).then(function (data) {
-            var imported = data.result || {};
-            message.innerHTML = '';
-            message.appendChild(alertBox('نُزّلت النسخة «' + (imported.name || '') + '» إلى النسخ المحلية' +
-              (imported.archiveMode === 'google-sheet' ? ' (من تبويب JSON في جدول Google)' : ' (من ملفات Drive)') +
-              '. استعدها من تبويب النسخ الاحتياطي في الإعدادات.', 'ok'));
-          }).catch(function (error) {
-            message.innerHTML = '';
-            message.appendChild(alertBox(error.message, 'error'));
-          }).finally(function () { node.disabled = false; });
-        }),
-        button('فتح مجلد النسخ المحلية', function () {
-          if (window.desktopSA.openBackups) window.desktopSA.openBackups();
-          else window.desktopSA.openDataFolder();
-        })
-      ]),
-      message,
-      el('p', {
+      el('div', {}, [el('b', { text: cloud.present ? 'السحابة: ' + (cloud.url || '') : 'السحابة غير مُهيأة' })]),
+      el('div', {
         className: 'hint',
-        dir: 'ltr',
-        text: (status.dataDir || '') + '\\backups\\exports'
+        text: 'آخر نجاح: ' + when(stateInfo.lastSuccessAt) + ' — آخر تشغيل: ' + when(stateInfo.lastRunAt)
       })
     ]));
+    if (stateInfo.lastError) nodes.push(alertBox('آخر خطأ: ' + stateInfo.lastError, 'warn'));
+    if (stateInfo.lastArchiveMode === 'script-drive' && stateInfo.lastArchiveNote) {
+      nodes.push(alertBox(stateInfo.lastArchiveNote, 'ok'));
+    }
 
-    if (state.backupTest && !state.backupTest.error) {
-      nodes.push(section('روابط سحابية', '', [
-        el('div', { className: 'ds-links' }, [
-          el('a', { href: state.backupTest.folderUrl, target: '_blank', rel: 'noreferrer', text: 'مجلد النسخ في Drive' }),
-          el('a', { href: state.backupTest.spreadsheetUrl, target: '_blank', rel: 'noreferrer', text: 'جدول Google المقروء' })
+    var urlInput = input(cloud.url || '', { dir: 'ltr', placeholder: 'https://script.google.com/macros/s/.../exec' });
+    var secretInput = input('', {
+      type: 'password', dir: 'ltr',
+      placeholder: cloud.present ? 'اتركه فارغًا للإبقاء على السر الحالي' : 'كلمة النسخ السحابي'
+    });
+    nodes.push(section('النسخ السحابي', null, [
+        el('div', { className: 'ds-grid-3' }, [field('رابط السحابة', urlInput), field('كلمة النسخ', secretInput)]),
+        el('div', { className: 'ds-actions' }, [
+          button('حفظ واختبار', function (node) {
+            node.disabled = true;
+            var body = { url: urlInput.value.trim(), test: true };
+            if (secretInput.value.trim()) body.secret = secretInput.value.trim();
+            request('/desktop/backup/cloud', { method: 'POST', body: body }).then(function (data) {
+              var test = data.result && data.result.test;
+              message.innerHTML = '';
+              message.appendChild(alertBox(test && test.error
+                ? ('حُفظت البيانات لكن فشل الاختبار: ' + test.error)
+                : 'تم الاتصال بالسحابة. النسخ المتاحة: ' + ((test && test.count) || 0),
+              test && test.error ? 'warn' : 'ok'));
+              secretInput.value = '';
+              refresh(modalRef, true);
+            }).catch(function (error) {
+              message.innerHTML = '';
+              message.appendChild(alertBox(error.message, 'error'));
+            }).finally(function () { node.disabled = false; });
+          }, 'primary'),
+          button('اختبار الاتصال', function (node) {
+            node.disabled = true;
+            request('/desktop/backup/cloud/test', { method: 'POST' }).then(function (data) {
+              message.innerHTML = '';
+              message.appendChild(alertBox('الاتصال ناجح. النسخ المتاحة: ' + ((data.test && data.test.count) || 0), 'ok'));
+              refresh(modalRef, true);
+            }).catch(function (error) {
+              message.innerHTML = '';
+              message.appendChild(alertBox(error.message, 'error'));
+            }).finally(function () { node.disabled = false; });
+          }),
+          cloud.present ? button('إزالة السحابة', function (node) {
+            node.disabled = true;
+            request('/desktop/backup/cloud/remove', { method: 'POST' }).then(function () {
+              message.innerHTML = '';
+              message.appendChild(alertBox('أُزيل رابط السحابة وسرّها من هذا الجهاز.', 'ok'));
+              refresh(modalRef, true);
+            }).catch(function (error) {
+              message.innerHTML = '';
+              message.appendChild(alertBox(error.message, 'error'));
+              node.disabled = false;
+            });
+          }, 'sm danger') : null
+        ]),
+        message
+      ]));
+
+    var auto = el('input', { type: 'checkbox' });
+    auto.checked = config.auto !== false;
+    nodes.push(section('إعدادات النسخ',
+      'نسختا JSON وXLSX محليتان دائمًا، ونسخة JSON في Drive صاحب السكربت عند تهيئة السحابة. يُحتفظ بآخر 10 نسخ سحابية.', [
+        el('label', { className: 'ds-check' }, [
+          auto, el('span', { text: 'نسخ تلقائي يومي في وقت النسخ الاحتياطي من الإعدادات العامة' })
+        ]),
+        el('div', { className: 'ds-actions' }, [
+          button('حفظ الإعدادات', function (node) {
+            node.disabled = true;
+            request('/desktop/backup/config', { method: 'POST', body: { auto: auto.checked } }).then(function () {
+              message.innerHTML = '';
+              message.appendChild(alertBox('حُفظت إعدادات النسخ.', 'ok'));
+              refresh(modalRef, true);
+            }).catch(function (error) {
+              message.innerHTML = '';
+              message.appendChild(alertBox(error.message, 'error'));
+            }).finally(function () { node.disabled = false; });
+          }),
+          button('نسخ الآن', function (node) {
+            node.disabled = true;
+            message.innerHTML = '';
+            message.appendChild(alertBox('جارٍإنشاء النسخة المحلية ورفعها إلى السحابة…', 'warn'));
+            request('/desktop/backup/run', { method: 'POST' }).then(function (data) {
+              var result = data.result || {};
+              var uploaded = result.cloud && result.cloud.json;
+              message.innerHTML = '';
+              message.appendChild(alertBox(uploaded
+                ? 'اكتمل النسخ السحابي: ' + (uploaded.name || '') + '.'
+                : 'اكتمل النسخ المحلي فقط؛ السحابة غير مُهيأة.', uploaded ? 'ok' : 'warn'));
+              if (uploaded && uploaded.url) {
+                message.appendChild(el('div', { className: 'ds-links' }, [
+                  el('a', { href: uploaded.url, target: '_blank', rel: 'noreferrer', text: 'فتح النسخة في Drive' })
+                ]));
+              }
+              refresh(modalRef, true);
+            }).catch(function (error) {
+              message.innerHTML = '';
+              message.appendChild(alertBox(error.message, 'error'));
+            }).finally(function () { node.disabled = false; });
+          }, 'primary'),
+          button('استيراد أحدث نسخة سحابية', function (node) {
+            node.disabled = true;
+            request('/desktop/backup/import-latest', { method: 'POST' }).then(function (data) {
+              var imported = data.result || {};
+              message.innerHTML = '';
+              message.appendChild(alertBox('نُزّلت النسخة «' + (imported.name || '') +
+                '» إلى النسخ المحلية. استعدها من تبويب النسخ الاحتياطي في الإعدادات.', 'ok'));
+            }).catch(function (error) {
+              message.innerHTML = '';
+              message.appendChild(alertBox(error.message, 'error'));
+            }).finally(function () { node.disabled = false; });
+          }),
+          button('فتح مجلد النسخ المحلية', function () {
+            if (window.desktopSA.openBackups) window.desktopSA.openBackups();
+            else window.desktopSA.openDataFolder();
+          })
         ])
       ]));
-    }
     return nodes;
   }
 
@@ -612,8 +532,7 @@
         el('div', { className: 'ds-actions' }, [
           button('فتح مجلد البيانات', function () { window.desktopSA.openDataFolder(); }),
           button('تنزيل قاعدة البيانات JSON', function () { window.open('/desktop/database', '_blank'); })
-        ]),
-        alertBox('النسخ الاحتياطي المحلي يعمل تلقائيًا وفق إعدادات النظام. النسخ السحابي يحتاج حساب خدمة Google من تبويب «النسخ السحابي».', 'warn')
+        ])
       ])
     ];
   }

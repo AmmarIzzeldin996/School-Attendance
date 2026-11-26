@@ -315,8 +315,10 @@
 
 | الملف | المحتوى |
 |---|---|
-| `secrets/service-account.enc` | بيانات حساب خدمة Google مشفرة |
+| `secrets/service-account.enc` | بيانات حساب خدمة Google مشفرة (مسار قديم) |
 | `secrets/service-account.meta.json` | البريد، المشروع، طريقة الحماية، التاريخ |
+| `secrets/cloud-webapp.enc` | رابط `/exec` وكلمة النسخ السحابي مشفران |
+| `secrets/cloud-webapp.meta.json` | الرابط وطريقة الحماية والتاريخ (بلا سر) |
 | `secrets/local.key` | مفتاح AES-256-GCM عند غياب `safeStorage` (DPAPI) |
 
 - التشفير المفضل: `safeStorage` (DPAPI على Windows).

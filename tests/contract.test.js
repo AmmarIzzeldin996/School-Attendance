@@ -13,7 +13,7 @@ const READ_ONLY_ACTIONS = [
   'getUsers', 'getAudit', 'getBackupStatus', 'previewRestore'
 ];
 const EDITOR_ONLY_ENTRY_POINTS = [
-  'installSchool', 'migrateV36', 'recoverSupervisor', 'runMaintenanceNow', 'doGet', 'include'
+  'installSchool', 'migrateV36', 'recoverSupervisor', 'getCloudBackupSecret', 'runMaintenanceNow', 'doGet', 'doPost', 'include'
 ];
 const LEGACY_COLUMNS = {
   Students: ['id', 'name', 'classroom', 'phone', 'active', 'token'],
